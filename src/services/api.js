@@ -41,9 +41,11 @@ export const api = {
     return res.json();
   },
   createReport: async (formData) => {
+    const isMultipart = formData instanceof FormData;
     const res = await fetch(`${BASE_URL}/reports`, {
       method: 'POST',
-      body: formData // multipart/form-data or json
+      headers: isMultipart ? {} : { 'Content-Type': 'application/json' },
+      body: isMultipart ? formData : JSON.stringify(formData)
     });
     return res.json();
   },
@@ -56,9 +58,11 @@ export const api = {
     return res.json();
   },
   analyzePhoto: async (formData) => {
+    const isMultipart = formData instanceof FormData;
     const res = await fetch(`${BASE_URL}/reports/analyze-photo`, {
       method: 'POST',
-      body: formData
+      headers: isMultipart ? {} : { 'Content-Type': 'application/json' },
+      body: isMultipart ? formData : JSON.stringify(formData)
     });
     return res.json();
   },
@@ -122,11 +126,12 @@ export const api = {
   },
 
   // Reverse Image Search (Prompt A)
-  reverseSearch: async (data) => {
+  reverseSearch: async (formData) => {
+    const isMultipart = formData instanceof FormData;
     const res = await fetch(`${BASE_URL}/reports/reverse-search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      headers: isMultipart ? {} : { 'Content-Type': 'application/json' },
+      body: isMultipart ? formData : JSON.stringify(formData)
     });
     return res.json();
   },
