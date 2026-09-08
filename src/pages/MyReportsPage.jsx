@@ -15,47 +15,88 @@ import {
   ChevronUp,
   AlertCircle,
   MessageSquare,
-  Star
+  Star,
+  Trash2,
+  Camera
 } from 'lucide-react';
 
 export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, session, loading: authLoading } = useAuth();
   const [myReports, setMyReports] = useState([]);
   const [matchesByReport, setMatchesByReport] = useState({});
   const [expandedReports, setExpandedReports] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // Modals state
   const [activeVerificationMatch, setActiveVerificationMatch] = useState(null);
   const [activeChatMatch, setActiveChatMatch] = useState(null);
 
   useEffect(() => {
+    if (authLoading) return;
     loadUserReports();
-  }, [currentUser]);
+  }, [currentUser?.id, session?.user?.id, authLoading]);
 
   const loadUserReports = async () => {
-    if (!currentUser) return;
+    const userId = currentUser?.id || session?.user?.id;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const reports = await api.getReports({ userId: currentUser.id });
-      setMyReports(reports);
+      setError(null);
+      
+      // Fetch active campus reports from Supabase
+      const allReports = await api.getReports();
+      const rawList = Array.isArray(allReports) ? allReports : [];
 
-      // Auto-expand and load matches for the first report
+      // Exclude hardcoded legacy test reports so user starts with a clean slate
+      const IGNORED_TEST_IDS = new Set([
+        'rep-lost-1788411878794',
+        'rep-lost-1788701762319',
+        'rep-found-1788701921369'
+      ]);
+      const cleanAll = rawList.filter(r => !IGNORED_TEST_IDS.has(r.id));
+
+      // Filter reports belonging to current user
+      const userReports = cleanAll.filter(r => r.user_id === userId);
+      setMyReports(userReports);
+
+      // Auto-expand and calculate multimodal fusion matches across the campus pool
       const matchesMap = {};
       const expandedMap = {};
 
-      for (const rep of reports) {
-        const matches = await api.getMatchesForReport(rep.id);
-        matchesMap[rep.id] = matches;
-        expandedMap[rep.id] = matches.length > 0; // auto-expand if it has matches
+      for (const rep of userReports) {
+        try {
+          const matches = await api.getMatchesForReport(rep.id, cleanAll);
+          const safeMatches = Array.isArray(matches) ? matches : [];
+          matchesMap[rep.id] = safeMatches;
+          expandedMap[rep.id] = safeMatches.length > 0;
+        } catch {
+          matchesMap[rep.id] = [];
+          expandedMap[rep.id] = false;
+        }
       }
 
       setMatchesByReport(matchesMap);
       setExpandedReports(expandedMap);
     } catch (err) {
       console.error('Failed to load user reports:', err);
+      setError(err.message || 'Unable to load your active reports. Please check your connection.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteReport = async (reportId) => {
+    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    try {
+      await api.deleteReport(reportId);
+      loadUserReports();
+    } catch (err) {
+      console.error('Failed to delete report:', err);
     }
   };
 
@@ -73,6 +114,17 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
     }
   };
 
+  const formatReportTime = (ts) => {
+    if (!ts) return 'Recent';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return 'Recent';
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return 'Recent';
+    }
+  };
+
   const totalMatchesCount = Object.values(matchesByReport).reduce((acc, mList) => acc + (mList?.length || 0), 0);
 
   return (
@@ -85,7 +137,7 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
               My Radar &amp; Active Reports
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-campus-500/20 text-campus-300 border border-campus-500/30">
-              {currentUser?.name || 'Campus Student'}
+              {currentUser?.name || session?.user?.email?.split('@')[0] || 'Campus Student'}
             </span>
           </div>
           <p className="text-sm text-slate-400 mt-1">
@@ -93,7 +145,6 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
           </p>
         </div>
 
-        {/* FIX: min-h-[48px] was missing before */}
         <button
           onClick={onReportNew}
           className="min-h-[48px] flex items-center space-x-2 px-5 py-3 rounded-xl text-sm font-extrabold bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-glow-primary hover:opacity-95 self-start transition-all"
@@ -140,14 +191,30 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
             </div>
           ))}
         </div>
+      ) : error ? (
+        <div className="glass-panel p-10 rounded-3xl text-center space-y-4 border border-rose-800/40 bg-rose-950/20 animate-fadeIn">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-900/30 border border-rose-700/40 flex items-center justify-center text-rose-400">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-extrabold text-white">Unable to Load Reports</h3>
+          <p className="text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+            {error}
+          </p>
+          <button
+            onClick={loadUserReports}
+            className="min-h-[44px] inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl text-sm font-extrabold bg-campus-600 text-white hover:bg-campus-500 transition-all shadow-glow-primary"
+          >
+            <span>Try Again</span>
+          </button>
+        </div>
       ) : myReports.length === 0 ? (
         <div className="glass-panel p-14 rounded-3xl text-center space-y-5 border border-slate-800 animate-fadeIn">
           <div className="w-16 h-16 mx-auto rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center">
             <FolderHeart className="w-8 h-8 text-slate-600" />
           </div>
-          <h3 className="text-lg font-extrabold text-white">No Active Reports Yet</h3>
+          <h3 className="text-lg font-extrabold text-white">No active reports found</h3>
           <p className="text-sm text-slate-400 max-w-sm mx-auto leading-relaxed">
-            You haven't filed any lost or found items yet. Report an item and our AI will scan for matches automatically.
+            You haven't filed any active reports yet. Report an item and our AI will scan for matches automatically.
           </p>
           <button
             onClick={onReportNew}
@@ -173,11 +240,17 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
                 <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-start space-x-4">
                     <div className="relative shrink-0">
-                      <img
-                        src={report.photo_url || 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=600&q=80'}
-                        alt={report.title}
-                        className="w-16 h-16 rounded-xl object-cover border border-slate-700 bg-slate-950"
-                      />
+                      {report.photo_url ? (
+                        <img
+                          src={report.photo_url}
+                          alt={report.title}
+                          className="w-16 h-16 rounded-xl object-cover border border-slate-700 bg-slate-950"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl border border-slate-700 bg-slate-950 flex items-center justify-center text-slate-500">
+                          <Camera className="w-7 h-7" />
+                        </div>
+                      )}
                       {report.is_high_value && (
                         <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
                           <Star className="w-3 h-3 fill-slate-950 text-slate-950" />
@@ -199,14 +272,14 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
                           <MapPin className="w-3 h-3 shrink-0" /> {report.location}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 shrink-0" /> {new Date(report.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          <Clock className="w-3 h-3 shrink-0" /> {formatReportTime(report.timestamp)}
                         </span>
                       </p>
                     </div>
                   </div>
 
-                  {/* Match Toggle Button */}
-                  <div className="flex items-center space-x-3 self-end sm:self-center shrink-0">
+                  {/* Actions & Match Toggle */}
+                  <div className="flex items-center space-x-2.5 self-end sm:self-center shrink-0">
                     {matches.length > 0 ? (
                       <button
                         onClick={() => toggleExpand(report.id)}
@@ -222,6 +295,14 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
                         <span>Scanning Pool...</span>
                       </div>
                     )}
+
+                    <button
+                      onClick={() => handleDeleteReport(report.id)}
+                      title="Delete report"
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 

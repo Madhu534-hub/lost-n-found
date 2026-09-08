@@ -11,13 +11,14 @@ import {
   Languages,
   HelpCircle,
   ChevronDown,
-  MapPin
+  MapPin,
+  LogOut
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) => {
   const { t, i18n } = useTranslation();
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   const changeLanguage = (lang) => {
@@ -25,14 +26,16 @@ export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) =>
     setLangMenuOpen(false);
   };
 
-  const navItems = [
+  const allNavItems = [
     { id: 'landing', label: t('nav.home', 'Home'), icon: Sparkles },
-    { id: 'browse', label: t('nav.explore', 'Explore'), icon: Compass },
-    { id: 'report', label: t('nav.report', 'Report Item'), icon: PlusCircle, isPrimary: true },
-    { id: 'my-reports', label: t('nav.myReports', 'My Radar'), icon: FolderLock },
-    { id: 'leaderboard', label: t('nav.leaderboard', 'Heroes'), icon: Trophy },
-    { id: 'admin', label: t('nav.admin', 'Admin'), icon: ShieldCheck, badge: currentUser?.role === 'admin' ? 'Admin' : null }
+    { id: 'browse', label: t('nav.explore', 'Explore'), icon: Compass, protected: true },
+    { id: 'report', label: t('nav.report', 'Report Item'), icon: PlusCircle, isPrimary: true, protected: true },
+    { id: 'my-reports', label: t('nav.myReports', 'My Radar'), icon: FolderLock, protected: true },
+    { id: 'leaderboard', label: t('nav.leaderboard', 'Heroes'), icon: Trophy, protected: true },
+    { id: 'admin', label: t('nav.admin', 'Admin'), icon: ShieldCheck, badge: currentUser?.role === 'admin' ? 'Admin' : null, protected: true }
   ];
+
+  const navItems = allNavItems.filter(item => !item.protected || !!currentUser);
 
   // On mobile, show: Home, Explore, Report (primary), My Radar, Heroes — 5 max
   const mobileItems = navItems.filter(i => ['landing', 'browse', 'report', 'my-reports', 'leaderboard'].includes(i.id));
@@ -150,18 +153,54 @@ export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) =>
             <HelpCircle className="w-5 h-5" />
           </button>
 
-          {/* User Profile Pill */}
-          <div className="hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800">
-            <img
-              src={currentUser?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
-              alt={currentUser?.name}
-              className="w-9 h-9 rounded-xl ring-2 ring-campus-500/40 object-cover bg-slate-800"
-            />
-            <div className="text-left hidden xl:block">
-              <p className="text-xs font-bold text-white truncate max-w-[100px]">{currentUser?.name}</p>
-              <p className="text-[11px] text-amber-300 font-bold">{currentUser?.points || 140} pts ⚡</p>
+          {/* Logout Button */}
+          {currentUser && (
+            <button
+              onClick={() => {
+                logout();
+                setTab('auth');
+              }}
+              className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl text-rose-400 hover:text-white hover:bg-rose-900/30 border border-slate-800 hover:border-rose-900/50 flex items-center justify-center transition-all"
+              title="Log Out"
+              aria-label="Log out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* User Profile Pill or Sign In */}
+          {currentUser ? (
+            <button 
+              onClick={() => setTab('profile')}
+              className="hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800 hover:bg-slate-800/50 p-1 rounded-xl transition-colors text-left"
+              title="My Profile"
+            >
+              <img
+                src={currentUser?.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
+                alt={currentUser?.name}
+                className="w-9 h-9 rounded-xl ring-2 ring-campus-500/40 object-cover bg-slate-800"
+              />
+              <div className="text-left hidden xl:block">
+                <p className="text-xs font-bold text-white truncate max-w-[100px]">{currentUser?.name}</p>
+                <p className="text-[11px] text-amber-300 font-bold">{currentUser?.points || 140} pts ⚡</p>
+              </div>
+            </button>
+          ) : (
+            <div className="hidden sm:flex items-center space-x-2 pl-2 border-l border-slate-800">
+              <button 
+                onClick={() => setTab('auth')} 
+                className="text-sm font-bold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                Sign In
+              </button>
+              <button 
+                onClick={() => setTab('auth')} 
+                className="text-sm font-bold text-white bg-campus-600 hover:bg-campus-500 px-4 py-1.5 rounded-lg shadow-md transition-all shadow-campus-600/20"
+              >
+                Create Account
+              </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

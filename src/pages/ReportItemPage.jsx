@@ -39,12 +39,21 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
   const [title, setTitle] = useState('');
   // Start required selects empty so the user must make a real choice.
   const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
   const [description, setDescription] = useState('');
   const [isHighValue, setIsHighValue] = useState(false);
   const [serialNumber, setSerialNumber] = useState('');
   const [hiddenDetails, setHiddenDetails] = useState('');
+  
+  // Location States (Predefined + Custom Input options)
   const [building, setBuilding] = useState('');
-  const [roomArea, setRoomArea] = useState('');
+  const [customBuilding, setCustomBuilding] = useState('');
+  const [floor, setFloor] = useState('');
+  const [customFloor, setCustomFloor] = useState('');
+  const [area, setArea] = useState('');
+  const [customArea, setCustomArea] = useState('');
+  const [locationDetails, setLocationDetails] = useState('');
+
   const [timestamp, setTimestamp] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
@@ -74,6 +83,13 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
   const [showStep2Error, setShowStep2Error] = useState(false);
   const [showStep3Error, setShowStep3Error] = useState(false);
 
+  // Effective values helper
+  const effectiveCategory = category === 'Other' ? customCategory.trim() : category.trim();
+  const effectiveBuilding = building === 'Other' ? customBuilding.trim() : building.trim();
+  const effectiveFloor = floor === 'Other' ? customFloor.trim() : floor.trim();
+  const effectiveArea = area === 'Other' ? customArea.trim() : area.trim();
+  const effectiveLocationDetails = locationDetails.trim();
+
   // ─── COMPUTED VALIDATION — derived from form state, recalculated every render ──
   // A pasted URL must be an actual HTTP(S) image URL, rather than arbitrary text.
   const isValidImageUrl = (value) => {
@@ -94,10 +110,10 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
   const step1Valid = !!photoFile || isValidImageUrl(photoUrl);
 
   // Step 2 needs every field that is labelled with an asterisk.
-  const step2Valid = !!(title.trim() && category.trim() && description.trim());
+  const step2Valid = !!(title.trim() && effectiveCategory && description.trim());
 
-  // Step 3 is valid if building is selected, room/area is filled, and a timestamp is set.
-  const step3Valid = !!(building.trim() && roomArea.trim() && timestamp);
+  // Step 3 is valid if building is selected/entered, floor/area/details provided, and a timestamp is set.
+  const step3Valid = !!(effectiveBuilding && (effectiveFloor || effectiveArea || effectiveLocationDetails) && timestamp);
 
   // ─── GATED STEP NAVIGATION ─────────────────────────────────────────────────
   // Called when the user clicks a step tab directly (e.g. jumping from 1 to 3).
@@ -132,6 +148,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
     setShowStep1Error(false);
     setTitle(sample.title);
     setCategory(sample.cat);
+    setCustomCategory('');
     if (sample.highVal) setIsHighValue(true);
     if (sample.serial) setSerialNumber(sample.serial);
     runVisionAnalysis({ customPhotoUrl: sample.url, titleHint: sample.title, catHint: sample.cat });
@@ -194,8 +211,13 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
     const file = event.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
 
-    setPhotoUrl(URL.createObjectURL(file)); // Lets the user preview the uploaded image.
-    setPhotoFile(file); // Lets the API receive the original image file on submit.
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPhotoUrl(e.target.result);
+    };
+    reader.readAsDataURL(file);
+
+    setPhotoFile(file);
     setShowStep1Error(false);
     runVisionAnalysis({ fileObj: file });
   };
@@ -255,29 +277,38 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
     try {
       setSubmitting(true);
 
-      const dupCheck = await api.checkDuplicate({
-        type,
-        title: title.trim(),
-        description: description.trim(),
-        category,
-        building,
-        lat: building === 'Main Library' ? 37.4275 : building === 'Student Union / Dining Hall' ? 37.4289 : building === 'Computer Science Building' ? 37.4300 : 37.4265,
-        lng: building === 'Main Library' ? -122.1697 : building === 'Student Union / Dining Hall' ? -122.1720 : building === 'Computer Science Building' ? -122.1735 : -122.1705,
-        visual_color: visualColor,
-        visual_brand: visualBrand
-      });
+      const effCategory = category === 'Other' ? customCategory.trim() : category.trim();
+      const effBuilding = building === 'Other' ? customBuilding.trim() : building.trim();
 
-      if (dupCheck.isDuplicate && dupCheck.duplicateItem) {
-        setDetectedDuplicate(dupCheck.duplicateItem);
-        setDuplicateModalOpen(true);
-        setSubmitting(false);
-        return;
+      // 1. Optional duplicate check (gracefully fails if backend is offline)
+      try {
+        const dupCheck = await api.checkDuplicate({
+          type,
+          title: title.trim(),
+          description: description.trim(),
+          category: effCategory,
+          building: effBuilding,
+          lat: effBuilding === 'Main Library' ? 37.4275 : effBuilding === 'Student Union / Dining Hall' ? 37.4289 : effBuilding === 'Computer Science Building' ? 37.4300 : 37.4265,
+          lng: effBuilding === 'Main Library' ? -122.1697 : effBuilding === 'Student Union / Dining Hall' ? -122.1720 : effBuilding === 'Computer Science Building' ? -122.1735 : -122.1705,
+          visual_color: visualColor,
+          visual_brand: visualBrand
+        });
+
+        if (dupCheck?.isDuplicate && dupCheck?.duplicateItem) {
+          setDetectedDuplicate(dupCheck.duplicateItem);
+          setDuplicateModalOpen(true);
+          setSubmitting(false);
+          return;
+        }
+      } catch (dupErr) {
+        console.warn('Duplicate check warning:', dupErr);
       }
 
+      // 2. Save report to Supabase DB
       await executeSaveReport();
     } catch (err) {
       console.error('Submit error:', err);
-      showToast('Failed to check report. Please try again.', 'error');
+      showToast(err.message || 'Failed to submit report. Please try again.', 'error');
       setSubmitting(false);
     }
   };
@@ -285,22 +316,32 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
   const executeSaveReport = async () => {
     try {
       setSubmitting(true);
-      const locationString = `${building}, ${roomArea}`;
+      const effCategory = category === 'Other' ? customCategory.trim() : category.trim();
+      const effBuilding = building === 'Other' ? customBuilding.trim() : building.trim();
+      const effFloor = floor === 'Other' ? customFloor.trim() : floor.trim();
+      const effArea = area === 'Other' ? customArea.trim() : area.trim();
+      const effDetails = locationDetails.trim();
+
+      const locParts = [effBuilding, effFloor, effArea].filter(Boolean);
+      let locationString = locParts.join(', ');
+      if (effDetails) {
+        locationString = locationString ? `${locationString} (${effDetails})` : effDetails;
+      }
 
       let data;
       if (photoFile) {
         // Submit as FormData for multi-part file uploads
         data = new FormData();
-        data.append('user_id', currentUser?.id || 'user-alex');
+        data.append('user_id', currentUser?.id || '');
         data.append('type', type);
         data.append('title', title.trim());
         data.append('description', description.trim());
-        data.append('category', category);
+        data.append('category', effCategory);
         data.append('location', locationString);
-        data.append('building', building);
+        data.append('building', effBuilding);
         
-        const latVal = building === 'Main Library' ? 37.4275 : building === 'Student Union / Dining Hall' ? 37.4289 : building === 'Computer Science Building' ? 37.4300 : 37.4265;
-        const lngVal = building === 'Main Library' ? -122.1697 : building === 'Student Union / Dining Hall' ? -122.1720 : building === 'Computer Science Building' ? -122.1735 : -122.1705;
+        const latVal = effBuilding === 'Main Library' ? 37.4275 : effBuilding === 'Student Union / Dining Hall' ? 37.4289 : effBuilding === 'Computer Science Building' ? 37.4300 : 37.4265;
+        const lngVal = effBuilding === 'Main Library' ? -122.1697 : effBuilding === 'Student Union / Dining Hall' ? -122.1720 : effBuilding === 'Computer Science Building' ? -122.1735 : -122.1705;
         
         data.append('lat', latVal);
         data.append('lng', lngVal);
@@ -312,20 +353,21 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
         data.append('serial_number', serialNumber.trim());
         data.append('is_high_value', isHighValue ? 1 : 0);
         data.append('photo', photoFile); // Append raw image binary
+        if (photoUrl) data.append('photo_url', photoUrl);
       } else {
         // Fall back to simple JSON payload if a URL is provided
         data = {
-          user_id: currentUser?.id || 'user-alex',
+          user_id: currentUser?.id || '',
           type,
           title: title.trim(),
           description: description.trim(),
-          category,
+          category: effCategory,
           location: locationString,
-          building,
-          lat: building === 'Main Library' ? 37.4275 : building === 'Student Union / Dining Hall' ? 37.4289 : building === 'Computer Science Building' ? 37.4300 : 37.4265,
-          lng: building === 'Main Library' ? -122.1697 : building === 'Student Union / Dining Hall' ? -122.1720 : building === 'Computer Science Building' ? -122.1735 : -122.1705,
+          building: effBuilding,
+          lat: effBuilding === 'Main Library' ? 37.4275 : effBuilding === 'Student Union / Dining Hall' ? 37.4289 : effBuilding === 'Computer Science Building' ? 37.4300 : 37.4265,
+          lng: effBuilding === 'Main Library' ? -122.1697 : effBuilding === 'Student Union / Dining Hall' ? -122.1720 : effBuilding === 'Computer Science Building' ? -122.1735 : -122.1705,
           timestamp: new Date(timestamp).toISOString(),
-          photo_url: photoUrl || 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=600&q=80',
+          photo_url: photoUrl || '',
           item_details_hidden: hiddenDetails.trim(),
           auto_tags: JSON.stringify(autoTags),
           visual_color: visualColor,
@@ -344,7 +386,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
       }
     } catch (err) {
       console.error('Create report error:', err);
-      showToast('Error saving report.', 'error');
+      showToast(err.message || 'Error saving report. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -663,8 +705,22 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                 <option value="Keys & IDs">Keys & IDs</option>
                 <option value="Clothing & Accessories">Clothing & Accessories</option>
                 <option value="Books & Stationery">Books & Stationery</option>
+                <option value="Other">Other</option>
               </select>
-              {!category.trim() && <p className="mt-1 text-xs text-rose-300">Category is required.</p>}
+              {category === 'Other' && (
+                <div className="mt-2.5 animate-fadeIn">
+                  <label className="block text-xs font-semibold text-campus-300 mb-1">Enter category</label>
+                  <input
+                    type="text"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    placeholder="Enter category"
+                    required
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                  />
+                </div>
+              )}
+              {!effectiveCategory && <p className="mt-1 text-xs text-rose-300">Category is required.</p>}
             </div>
           </div>
 
@@ -699,6 +755,34 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               className="w-full p-4 rounded-2xl glass-input text-base text-white placeholder-slate-500 leading-relaxed"
             />
             {!description.trim() && <p className="text-xs text-rose-300">Detailed Description is required.</p>}
+          </div>
+
+          {/* 🔒 Private Ownership Details */}
+          <div className="p-5 rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-950/30 to-slate-900/60 space-y-3">
+            <div className="flex items-start space-x-3">
+              <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0 mt-0.5">
+                <ShieldCheck className="w-4 h-4 text-violet-400" />
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-violet-200">🔒 Private Ownership Details <span className="text-slate-400 font-semibold text-xs ml-1">(Optional)</span></p>
+                <p className="text-xs text-slate-300 leading-relaxed mt-1">
+                  Add details that only the true owner is likely to know. These details will be used for ownership verification and will NOT be shown publicly.
+                </p>
+              </div>
+            </div>
+            <textarea
+              rows={2}
+              value={hiddenDetails}
+              onChange={(e) => setHiddenDetails(e.target.value)}
+              placeholder="e.g. Small red keychain attached to the left strap."
+              className="w-full p-4 rounded-2xl glass-input text-sm text-white placeholder-slate-500 leading-relaxed"
+            />
+            {hiddenDetails.trim() && (
+              <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Private detail saved — will be used to generate ownership verification questions.
+              </p>
+            )}
           </div>
 
           {/* High-Value Flag */}
@@ -787,34 +871,128 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
             <p className="text-sm text-slate-400 mt-1">Where was the item left or found?</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* Building Selection */}
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Building / Facility *</label>
+              <label className="block text-sm font-bold text-slate-200 mb-2">Building *</label>
               <select
                 value={building}
-                onChange={(e) => setBuilding(e.target.value)}
+                onChange={(e) => {
+                  setBuilding(e.target.value);
+                  if (e.target.value !== 'Other') setCustomBuilding('');
+                }}
                 className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
               >
-                <option value="" disabled>Select a building or facility</option>
+                <option value="" disabled>Select Building</option>
                 <option value="Main Library">Main Library</option>
+                <option value="College Canteen">College Canteen</option>
+                <option value="Block B">Block B</option>
+                <option value="Block C - Computer Lab">Block C - Computer Lab</option>
                 <option value="Student Union / Dining Hall">Student Union / Dining Hall</option>
                 <option value="Computer Science Building">Computer Science Building</option>
                 <option value="Engineering Quad">Engineering Quad</option>
                 <option value="Sports & Recreation Complex">Sports & Recreation Complex</option>
+                <option value="Near Basketball Court">Near Basketball Court</option>
+                <option value="Other">Other / Enter manually</option>
               </select>
-              {!building.trim() && <p className="mt-1 text-xs text-rose-300">Building / Facility is required.</p>}
+              {building === 'Other' && (
+                <div className="mt-2.5 animate-fadeIn">
+                  <label className="block text-xs font-semibold text-campus-300 mb-1">Enter building name</label>
+                  <input
+                    type="text"
+                    value={customBuilding}
+                    onChange={(e) => setCustomBuilding(e.target.value)}
+                    placeholder="Enter building name"
+                    required
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                  />
+                </div>
+              )}
+              {!effectiveBuilding && <p className="mt-1 text-xs text-rose-300">Building is required.</p>}
             </div>
+
+            {/* Floor Selection */}
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Room / Floor / Area *</label>
+              <label className="block text-sm font-bold text-slate-200 mb-2">Floor</label>
+              <select
+                value={floor}
+                onChange={(e) => {
+                  setFloor(e.target.value);
+                  if (e.target.value !== 'Other') setCustomFloor('');
+                }}
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+              >
+                <option value="">Select Floor (Optional)</option>
+                <option value="Ground Floor">Ground Floor</option>
+                <option value="1st Floor">1st Floor</option>
+                <option value="2nd Floor">2nd Floor</option>
+                <option value="3rd Floor">3rd Floor</option>
+                <option value="Basement">Basement</option>
+                <option value="Parking Level">Parking Level</option>
+                <option value="Outdoor area">Outdoor area</option>
+                <option value="Not sure">Not sure</option>
+                <option value="Other">Other / Enter manually</option>
+              </select>
+              {floor === 'Other' && (
+                <div className="mt-2.5 animate-fadeIn">
+                  <label className="block text-xs font-semibold text-campus-300 mb-1">Enter floor</label>
+                  <input
+                    type="text"
+                    value={customFloor}
+                    onChange={(e) => setCustomFloor(e.target.value)}
+                    placeholder="Enter floor"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Area Selection */}
+            <div>
+              <label className="block text-sm font-bold text-slate-200 mb-2">Area</label>
+              <select
+                value={area}
+                onChange={(e) => {
+                  setArea(e.target.value);
+                  if (e.target.value !== 'Other') setCustomArea('');
+                }}
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+              >
+                <option value="">Select Area (Optional)</option>
+                <option value="Study Desks / Reading Room">Study Desks / Reading Room</option>
+                <option value="Cafeteria / Dining Tables">Cafeteria / Dining Tables</option>
+                <option value="Computer Lab / Server Area">Computer Lab / Server Area</option>
+                <option value="Locker Room / Gym Floor">Locker Room / Gym Floor</option>
+                <option value="Lawn / Open Court">Lawn / Open Court</option>
+                <option value="Corridor / Hallway">Corridor / Hallway</option>
+                <option value="Restrooms">Restrooms</option>
+                <option value="Security / Help Desk">Security / Help Desk</option>
+                <option value="Other">Other / Enter manually</option>
+              </select>
+              {area === 'Other' && (
+                <div className="mt-2.5 animate-fadeIn">
+                  <label className="block text-xs font-semibold text-campus-300 mb-1">Enter area</label>
+                  <input
+                    type="text"
+                    value={customArea}
+                    onChange={(e) => setCustomArea(e.target.value)}
+                    placeholder="Enter area"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Specific Location Details */}
+            <div>
+              <label className="block text-sm font-bold text-slate-200 mb-2">Location details <span className="text-slate-400 font-semibold text-xs ml-1">(Optional)</span></label>
               <input
                 type="text"
-                value={roomArea}
-                onChange={(e) => setRoomArea(e.target.value)}
-                placeholder="e.g. 2nd Floor Study Desks"
-                required
+                value={locationDetails}
+                onChange={(e) => setLocationDetails(e.target.value)}
+                placeholder="e.g. Beside the staircase near Room 204"
                 className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white placeholder-slate-500"
               />
-              {!roomArea.trim() && <p className="mt-1 text-xs text-rose-300">Room / Floor / Area is required.</p>}
             </div>
           </div>
 
@@ -834,23 +1012,16 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
             <p className="text-sm font-semibold text-rose-300">Please fill in Building, Room / Floor / Area, and Date & Time before submitting.</p>
           )}
 
-          {/* Anti-Fraud Details */}
-          <div className="p-5 rounded-2xl border border-campus-500/20 bg-gradient-to-r from-campus-950/40 to-slate-900/60 space-y-3">
-            <div className="flex items-center space-x-2 text-xs font-bold text-campus-300">
-              <ShieldCheck className="w-4 h-4 text-campus-400" />
-              <span>Hidden Verification Details (Private — Not Shown Publicly)</span>
+          {/* Private Ownership Details — now collected in Step 2. Show read-only summary here if filled. */}
+          {hiddenDetails.trim() && (
+            <div className="p-4 rounded-2xl border border-violet-500/20 bg-violet-950/20 flex items-center space-x-3">
+              <ShieldCheck className="w-5 h-5 text-violet-400 shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-violet-300">🔒 Private Ownership Details Added</p>
+                <p className="text-xs text-slate-400 mt-0.5">Your private verification detail is saved and will be used for ownership verification only.</p>
+              </div>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Secret details only you know (lockscreen wallpaper, inside contents, scratches) to verify ownership.
-            </p>
-            <input
-              type="text"
-              value={hiddenDetails}
-              onChange={(e) => setHiddenDetails(e.target.value)}
-              placeholder="e.g. Orange carabiner on strap, Calculus notes inside..."
-              className="w-full min-h-[48px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
-            />
-          </div>
+          )}
 
           {/* Final Submit */}
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">

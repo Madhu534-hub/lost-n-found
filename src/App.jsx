@@ -9,12 +9,17 @@ import { ReportItemPage } from './pages/ReportItemPage';
 import { MyReportsPage } from './pages/MyReportsPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { ReverseImageSearchModal } from './components/ReverseImageSearchModal';
 import { OnboardingWalkthrough } from './components/OnboardingWalkthrough';
 import { QRHandoverModal } from './components/QRHandoverModal';
 import { Sparkles } from 'lucide-react';
 
+import { LoginPage } from './pages/LoginPage';
+import { useAuth } from './context/AuthContext';
+
 export function AppContent() {
+  const { session, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('landing');
   const [selectedReport, setSelectedReport] = useState(null);
   
@@ -31,6 +36,24 @@ export function AppContent() {
     setSelectedReport(report);
     setActiveTab('my-reports');
   };
+
+  if (loading) {
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Loading...</div>;
+  }
+
+  const publicTabs = ['landing', 'auth'];
+  const isProtectedTab = !publicTabs.includes(activeTab);
+
+  // If trying to access a protected route without session, or explicitly asking for auth page
+  if (!session && (isProtectedTab || activeTab === 'auth')) {
+    return <LoginPage />;
+  }
+  
+  // If they are logged in and on auth tab, redirect to default authenticated view
+  if (session && activeTab === 'auth') {
+    setTimeout(() => setActiveTab('browse'), 0);
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-campus-500 selection:text-white">
@@ -81,6 +104,10 @@ export function AppContent() {
 
         {activeTab === 'admin' && (
           <AdminDashboardPage />
+        )}
+
+        {activeTab === 'profile' && (
+          <ProfilePage />
         )}
       </main>
 

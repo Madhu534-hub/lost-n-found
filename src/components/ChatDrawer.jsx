@@ -37,7 +37,10 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
   useEffect(() => {
     if (isOpen && match) {
       setReunited(match.status === 'reunited');
-      fetchMessages();
+      // Ensure match is persisted in Supabase before any chat operations
+      api.ensureMatchInDb(match).then(() => {
+        fetchMessages();
+      });
       const interval = setInterval(fetchMessages, 3000);
       return () => clearInterval(interval);
     }
@@ -67,9 +70,22 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
 
     try {
       setSending(true);
+      
+      const myUserId = currentUser?.id || session?.user?.id;
+      if (!myUserId) {
+        throw new Error("User session not found. Please sign in.");
+      }
+
+      const lostUserId = match?.lost_user_id || match?.lost_report?.user_id;
+      const foundUserId = match?.found_user_id || match?.found_report?.user_id;
+      
+      const isLostOwner = String(myUserId) === String(lostUserId);
+      const receiverId = isLostOwner ? foundUserId : (lostUserId || myUserId);
+
       const newMsg = await api.sendMessage(match.id, {
-        senderId: currentUser?.id || 'user-alex',
-        senderName: currentUser?.name || 'Campus Student',
+        senderId: myUserId,
+        receiverId: receiverId,
+        senderName: currentUser?.name || session?.user?.email?.split('@')[0] || 'Campus Member',
         text: textToSend.trim(),
         isLocationShare: isLocation
       });
@@ -78,7 +94,7 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
       setInputText('');
     } catch (err) {
       console.error('Send error:', err);
-      showToast('Failed to send message.', 'error');
+      showToast(err.message || 'Failed to send message.', 'error');
     } finally {
       setSending(false);
     }
@@ -130,7 +146,7 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Item: <span className="text-white font-medium">{match.lost_title || match.found_title || 'Campus Item'}</span>
+                Item: <span className="text-white font-medium">{match.lost_title || match.found_title || match.lost_report?.title || match.found_report?.title || match.target_report?.title || match.matched_report?.title || 'Campus Item'}</span>
               </p>
             </div>
           </div>
@@ -195,12 +211,14 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
         {/* Message Stream */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {messages.map(msg => {
-            const isMe = msg.sender_id === currentUser?.id || (currentUser?.id === 'user-alex' && msg.sender_id === 'user-alex');
+            const currentUserId = currentUser?.id || session?.user?.id;
+            const isMe = Boolean(currentUserId) && String(msg.sender_id) === String(currentUserId);
             const isSystem = msg.sender_id === 'system';
+            const isLocationMsg = msg.is_location_share === 1 || msg.is_location_share === true || msg.is_location_share === '1';
 
             if (isSystem) {
               return (
-                <div key={msg.id} className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-500/25 text-center my-3 animate-scaleIn">
+                <div key={msg.id} className="p-3.5 rounded-2xl bg-purple-950/40 border border-purple-500/30 text-center my-3 animate-scaleIn shadow-md">
                   <p className="text-xs text-purple-200 leading-relaxed font-semibold">{msg.text}</p>
                 </div>
               );
@@ -211,22 +229,30 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
                 key={msg.id}
                 className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-scaleIn`}
               >
-                <div className="flex items-center space-x-1.5 mb-1 px-1.5">
-                  <span className="text-[11px] text-slate-400 font-bold">{msg.sender_name}</span>
-                  <span className="text-[10px] text-slate-500">
+                <div className={`flex items-center space-x-1.5 mb-1 px-1.5 ${isMe ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                  <span className={`text-[11px] font-black ${isMe ? 'text-blue-300' : 'text-teal-300'}`}>
+                    {isMe ? 'You' : (msg.sender_name || 'Campus Member')}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium">
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     isMe
-                      ? 'bg-gradient-to-r from-campus-600 to-ai-purple text-white rounded-tr-none shadow-md'
-                      : 'bg-slate-900/80 text-slate-100 rounded-tl-none border border-slate-850'
-                  } ${msg.is_location_share ? 'border-l-4 border-l-amber-400 bg-amber-950/20' : ''}`}
+                      ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white rounded-tr-xs shadow-lg shadow-blue-500/25 border border-blue-400/30'
+                      : 'bg-gradient-to-r from-teal-800 via-emerald-800 to-teal-900 text-emerald-50 rounded-tl-xs shadow-lg shadow-emerald-950/40 border border-emerald-400/35'
+                  } ${
+                    isLocationMsg
+                      ? isMe
+                        ? 'border-r-4 border-r-amber-400 bg-gradient-to-r from-blue-900/90 to-indigo-950/90'
+                        : 'border-l-4 border-l-amber-400 bg-gradient-to-r from-teal-950/90 to-emerald-950/90'
+                      : ''
+                  }`}
                 >
-                  {msg.is_location_share && (
+                  {isLocationMsg && (
                     <div className="flex items-center space-x-1 text-xs font-black text-amber-300 mb-1">
-                      <MapPin className="w-3.5 h-3.5" />
+                      <MapPin className="w-3.5 h-3.5 text-amber-400" />
                       <span>PROPOSED PICKUP SPOT</span>
                     </div>
                   )}
