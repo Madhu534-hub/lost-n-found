@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import {
   Sparkles,
   ShieldCheck,
@@ -47,14 +48,23 @@ const ConfidenceRing = ({ score }) => {
 };
 
 export const MatchCard = ({ match, onStartVerification, onOpenChat, onOpenQR }) => {
+  const { currentUser, session } = useAuth();
   const { t, i18n } = useTranslation();
   const [translatedText, setTranslatedText] = useState(null);
   const [translating, setTranslating] = useState(false);
 
-  const lost = match.target_report || match.lost_report;
-  const found = match.matched_report || match.found_report;
+  const currentUserId = currentUser?.id || session?.user?.id;
+
+  const lost = match.target_report?.type === 'lost' ? match.target_report : (match.matched_report?.type === 'lost' ? match.matched_report : (match.lost_report || match.target_report));
+  const found = match.target_report?.type === 'found' ? match.target_report : (match.matched_report?.type === 'found' ? match.matched_report : (match.found_report || match.matched_report));
 
   if (!lost || !found) return null;
+
+  const lostUserId = lost?.user_id || match.lost_user_id || match.lost_report?.user_id;
+  const foundUserId = found?.user_id || match.found_user_id || match.found_report?.user_id;
+
+  const isFounder = Boolean(currentUserId) && String(currentUserId) === String(foundUserId);
+  const isLoser = Boolean(currentUserId) && String(currentUserId) === String(lostUserId);
 
   const isVerified = match.status === 'verified';
   const isReunited = match.status === 'reunited';
@@ -219,7 +229,7 @@ export const MatchCard = ({ match, onStartVerification, onOpenChat, onOpenQR }) 
 
       {/* ── Action Buttons ── */}
       <div className="px-5 sm:px-6 pb-5 flex flex-wrap items-center gap-3">
-        {!isVerified && !isReunited ? (
+        {isLoser && !isVerified && !isReunited ? (
           <button
             onClick={() => onStartVerification(match)}
             className="flex-1 btn-primary flex items-center justify-center space-x-2"

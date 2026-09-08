@@ -460,17 +460,25 @@ export const api = {
     if (evalResult.passed) {
       const lostId = match?.lost_report_id || match?.lost_report?.id;
       const foundId = match?.found_report_id || match?.found_report?.id;
-      if (lostId || foundId) {
-        try {
-          const idsToUpdate = [lostId, foundId].filter(Boolean);
-          await supabase.from('reports').update({ status: 'verified' }).in('id', idsToUpdate);
-        } catch (e) {
-          console.warn('Supabase status update error:', e);
+      const matchId = match?.id;
+
+      try {
+        if (matchId) {
+          await supabase.from('matches').update({ status: 'verified' }).eq('id', matchId);
         }
+        const idsToUpdate = [lostId, foundId].filter(Boolean);
+        if (idsToUpdate.length > 0) {
+          await supabase.from('reports').update({ status: 'verified' }).in('id', idsToUpdate);
+        }
+      } catch (e) {
+        console.warn('Supabase status update error:', e);
       }
     }
 
-    return evalResult;
+    return {
+      ...evalResult,
+      matchStatus: evalResult.passed ? 'verified' : 'rejected'
+    };
   },
 
   // ── Ensure match exists in Supabase before chat operations ──
