@@ -156,9 +156,9 @@ export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) =>
           {/* Logout Button */}
           {currentUser && (
             <button
-              onClick={() => {
-                logout();
-                setTab('auth');
+              onClick={async () => {
+                await logout();
+                setTab('auth', { replace: true });
               }}
               className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl text-rose-400 hover:text-white hover:bg-rose-900/30 border border-slate-800 hover:border-rose-900/50 flex items-center justify-center transition-all"
               title="Log Out"

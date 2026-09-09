@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { DemoPersonaSwitcher } from './components/DemoPersonaSwitcher';
@@ -18,9 +18,36 @@ import { Sparkles } from 'lucide-react';
 import { LoginPage } from './pages/LoginPage';
 import { useAuth } from './context/AuthContext';
 
+const PATH_TO_TAB = {
+  '/': 'landing',
+  '/dashboard': 'browse',
+  '/app': 'browse',
+  '/reports': 'browse',
+  '/report': 'report',
+  '/chat': 'my-reports',
+  '/profile': 'profile',
+  '/leaderboard': 'leaderboard',
+  '/admin': 'admin',
+  '/my-reports': 'my-reports',
+  '/auth': 'auth',
+};
+
+const TAB_TO_PATH = {
+  landing: '/',
+  browse: '/dashboard',
+  report: '/report',
+  'my-reports': '/my-reports',
+  leaderboard: '/leaderboard',
+  admin: '/admin',
+  profile: '/profile',
+  auth: '/auth',
+};
+
+const getTabFromLocation = () => PATH_TO_TAB[window.location.pathname] || 'landing';
+
 export function AppContent() {
   const { session, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState('landing');
+  const [activeTab, setActiveTab] = useState(getTabFromLocation);
   const [selectedReport, setSelectedReport] = useState(null);
   
   // Modals state
@@ -28,30 +55,51 @@ export function AppContent() {
   const [tourOpen, setTourOpen] = useState(false);
   const [qrModalMatch, setQrModalMatch] = useState(null);
 
+  const navigateToTab = useCallback((tab, { replace = false } = {}) => {
+    const path = TAB_TO_PATH[tab] || '/';
+    if (window.location.pathname !== path) {
+      window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+    }
+    setActiveTab(tab);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => setActiveTab(getTabFromLocation());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!session) {
+      navigateToTab('auth', { replace: true });
+    } else if (activeTab === 'auth') {
+      navigateToTab('landing', { replace: true });
+    }
+  }, [activeTab, session, loading, navigateToTab]);
+
   const handleReportCreated = (newReport) => {
-    setActiveTab('my-reports');
+    navigateToTab('my-reports');
   };
 
   const handleSelectReport = (report) => {
     setSelectedReport(report);
-    setActiveTab('my-reports');
+    navigateToTab('my-reports');
   };
 
   if (loading) {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Loading...</div>;
   }
 
-  const publicTabs = ['landing', 'auth'];
-  const isProtectedTab = !publicTabs.includes(activeTab);
-
-  // If trying to access a protected route without session, or explicitly asking for auth page
-  if (!session && (isProtectedTab || activeTab === 'auth')) {
+  // Every application route, including the landing page, requires a valid Supabase session.
+  // This runs before any TraceIt UI renders, preventing protected-content flashes.
+  if (!session) {
     return <LoginPage />;
   }
   
   // If they are logged in and on auth tab, redirect to default authenticated view
   if (session && activeTab === 'auth') {
-    setTimeout(() => setActiveTab('browse'), 0);
     return null;
   }
 
@@ -63,7 +111,7 @@ export function AppContent() {
       {/* Campus Navigation Bar */}
       <Navbar
         currentTab={activeTab}
-        setTab={setActiveTab}
+        setTab={navigateToTab}
         onOpenPhotoSearch={() => setPhotoSearchOpen(true)}
         onOpenTour={() => setTourOpen(true)}
       />
@@ -72,7 +120,7 @@ export function AppContent() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         {activeTab === 'landing' && (
           <LandingPage
-            setActiveTab={setActiveTab}
+            setActiveTab={navigateToTab}
             onOpenPhotoSearch={() => setPhotoSearchOpen(true)}
           />
         )}
@@ -93,7 +141,7 @@ export function AppContent() {
 
         {activeTab === 'my-reports' && (
           <MyReportsPage
-            onReportNew={() => setActiveTab('report')}
+            onReportNew={() => navigateToTab('report')}
             onOpenQR={(match) => setQrModalMatch(match)}
           />
         )}

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'traceit-shell-v1';
+const CACHE_NAME = 'traceit-shell-v2';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',

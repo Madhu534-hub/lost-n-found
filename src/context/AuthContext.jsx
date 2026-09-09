@@ -240,7 +240,13 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    // Remove access immediately; the auth event will also keep this in sync.
+    setSession(null);
+    setCurrentUser(null);
+    setLoading(false);
+
+    const { error } = await supabase.auth.signOut();
+    return { success: !error, error: error?.message };
   };
 
   return (
