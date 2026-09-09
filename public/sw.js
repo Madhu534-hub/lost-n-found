@@ -1,7 +1,9 @@
-const CACHE_NAME = 'traceit-shell-v2';
+const CACHE_NAME = 'traceit-shell-v3';
 const APP_SHELL = [
   '/',
   '/manifest.webmanifest',
+  '/icons/traceit-icon-192.png',
+  '/icons/traceit-icon-512.png',
   '/icons/traceit-icon.svg',
 ];
 
