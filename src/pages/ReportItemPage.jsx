@@ -346,7 +346,9 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
         data.append('lat', latVal);
         data.append('lng', lngVal);
         data.append('timestamp', new Date(timestamp).toISOString());
-        data.append('item_details_hidden', hiddenDetails.trim());
+        // Ownership details belong only to a Lost report. A Finder must never
+        // be asked for, or store, the Loser's private verification detail.
+        if (type === 'lost') data.append('item_details_hidden', hiddenDetails.trim());
         data.append('auto_tags', JSON.stringify(autoTags));
         data.append('visual_color', visualColor);
         data.append('visual_brand', visualBrand);
@@ -368,12 +370,13 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
           lng: effBuilding === 'Main Library' ? -122.1697 : effBuilding === 'Student Union / Dining Hall' ? -122.1720 : effBuilding === 'Computer Science Building' ? -122.1735 : -122.1705,
           timestamp: new Date(timestamp).toISOString(),
           photo_url: photoUrl || '',
-          item_details_hidden: hiddenDetails.trim(),
+          ...(type === 'lost' ? { item_details_hidden: hiddenDetails.trim() } : {}),
           auto_tags: JSON.stringify(autoTags),
           visual_color: visualColor,
           visual_brand: visualBrand,
           serial_number: serialNumber.trim(),
           is_high_value: isHighValue ? 1 : 0
+
         };
       }
 
@@ -393,46 +396,62 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
   };
 
   const wizardSteps = [
-    { num: 1, label: '📷 Photo',    icon: Camera,    isValid: step1Valid },
-    { num: 2, label: '📝 Details',  icon: FileText,  isValid: step2Valid },
-    { num: 3, label: '📍 Location', icon: MapPin,    isValid: step3Valid },
+    { num: 1, label: 'Photo & Type', shortLabel: 'Photo', icon: Camera, isValid: step1Valid },
+    { num: 2, label: 'Item Details', shortLabel: 'Details', icon: FileText, isValid: step2Valid },
+    { num: 3, label: 'Location & Time', shortLabel: 'Location', icon: MapPin, isValid: step3Valid },
   ];
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-16">
-      {/* ── Wizard Progress Bar ── */}
-      <div className="glass-panel p-3 rounded-2xl border border-slate-800/60">
-        <div className="flex items-center gap-2">
+    <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6 pb-24 sm:pb-16">
+      {/* ── Mobile Step Indicator Header (● ○ ○) ── */}
+      <div className="glass-panel p-4 sm:p-4 rounded-2xl border border-slate-800/80 shadow-md">
+        {/* Mobile Header: Step X of 3 + Dots */}
+        <div className="flex items-center justify-between sm:hidden pb-3 mb-3 border-b border-slate-800/80">
+          <div>
+            <span className="text-xs font-black uppercase tracking-wider text-campus-400">
+              Step {currentStep} of 3
+            </span>
+            <h2 className="text-base font-extrabold text-white">
+              {wizardSteps[currentStep - 1]?.label}
+            </h2>
+          </div>
+          {/* Visual Progress Dots */}
+          <div className="flex items-center space-x-2 bg-slate-900/80 px-3 py-1.5 rounded-full border border-slate-800">
+            <span className={`w-2.5 h-2.5 rounded-full transition-all ${currentStep >= 1 ? 'bg-campus-400 shadow-glow-primary scale-110' : 'bg-slate-700'}`} />
+            <span className={`w-2.5 h-2.5 rounded-full transition-all ${currentStep >= 2 ? 'bg-campus-400 shadow-glow-primary scale-110' : 'bg-slate-700'}`} />
+            <span className={`w-2.5 h-2.5 rounded-full transition-all ${currentStep >= 3 ? 'bg-campus-400 shadow-glow-primary scale-110' : 'bg-slate-700'}`} />
+          </div>
+        </div>
+
+        {/* Desktop & Mobile Interactive Stepper Buttons */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {wizardSteps.map((step, idx) => {
             const Icon = step.icon;
             const isActive = currentStep === step.num;
-            // GREEN = the step's fields are actually filled in (real-time check),
-            // NOT just "the user has been here before".
-            // The checkmark always comes from current form data, never navigation history.
             const isDone = step.isValid;
             return (
               <React.Fragment key={step.num}>
                 <button
                   type="button"
                   onClick={() => handleStepClick(step.num)}
-                  className={`flex-1 min-h-[48px] px-3 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all text-sm font-bold ${
+                  className={`flex-1 min-h-[44px] sm:min-h-[48px] px-2.5 sm:px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 sm:gap-2 transition-all text-xs sm:text-sm font-extrabold ${
                     isDone
                       ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                       : isActive
                       ? 'bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-lg'
-                      : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                      : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-slate-800/40'
                   }`}
                 >
                   {isDone ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : (
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-4 h-4 shrink-0" />
                   )}
                   <span className="hidden sm:inline">{step.label}</span>
-                  <span className="sm:hidden">{step.num}</span>
+                  <span className="sm:hidden font-bold">{step.shortLabel}</span>
                 </button>
                 {idx < wizardSteps.length - 1 && (
-                  <div className={`w-8 h-0.5 rounded-full shrink-0 ${isDone ? 'bg-emerald-500/50' : 'bg-slate-800'}`} />
+                  <div className={`w-4 sm:w-8 h-0.5 rounded-full shrink-0 ${isDone ? 'bg-emerald-500/50' : 'bg-slate-800'}`} />
                 )}
               </React.Fragment>
             );
@@ -442,28 +461,34 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
 
       {/* ── STEP 1: PHOTO & TYPE ── */}
       {currentStep === 1 && (
-        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/60 space-y-6 animate-slideUp">
+        <div className="glass-panel p-4 sm:p-8 rounded-3xl border border-slate-800/60 space-y-5 sm:space-y-6 animate-slideUp">
           <div>
-            <span className="text-xs font-bold text-campus-400 uppercase tracking-wider">Step 1 of 3</span>
-            <h3 className="text-2xl font-black text-white mt-1">What are you reporting?</h3>
-            <p className="text-sm text-slate-400 mt-1">Choose if this item was lost or found, and add a picture.</p>
+            <div className="hidden sm:flex items-center space-x-2 text-xs font-bold text-campus-400 uppercase tracking-wider mb-1">
+              <span>Step 1 of 3</span>
+              <span>•</span>
+              <span>● ○ ○</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white">What are you reporting?</h3>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Choose if this item was lost or found, and add a picture.</p>
           </div>
 
-          {/* Type Toggle */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Type Toggle — Full Width Cards for Single-Hand Tap */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <button
               type="button"
               onClick={() => setType('lost')}
               className={`min-h-[64px] p-4 rounded-2xl border-2 flex items-center space-x-3 transition-all ${
                 type === 'lost'
-                  ? 'bg-gradient-to-r from-rose-950/50 to-rose-900/30 border-rose-500 text-rose-200 shadow-lg shadow-rose-500/10'
+                  ? 'bg-gradient-to-r from-rose-950/60 to-rose-900/40 border-rose-500 text-rose-100 shadow-lg shadow-rose-500/15'
                   : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
               }`}
             >
-              <span className="text-2xl">🔴</span>
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-xl shrink-0">
+                🔴
+              </div>
               <div className="text-left">
-                <p className="text-base font-extrabold">I Lost Something</p>
-                <p className="text-xs opacity-70">Help me find my item</p>
+                <p className="text-sm sm:text-base font-black">I Lost Something</p>
+                <p className="text-xs opacity-75">Help me find my missing item</p>
               </div>
             </button>
 
@@ -472,103 +497,161 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               onClick={() => setType('found')}
               className={`min-h-[64px] p-4 rounded-2xl border-2 flex items-center space-x-3 transition-all ${
                 type === 'found'
-                  ? 'bg-gradient-to-r from-emerald-950/50 to-emerald-900/30 border-emerald-500 text-emerald-200 shadow-lg shadow-emerald-500/10'
+                  ? 'bg-gradient-to-r from-emerald-950/60 to-emerald-900/40 border-emerald-500 text-emerald-100 shadow-lg shadow-emerald-500/15'
                   : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
               }`}
             >
-              <span className="text-2xl">🟢</span>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-xl shrink-0">
+                🟢
+              </div>
               <div className="text-left">
-                <p className="text-base font-extrabold">I Found Something</p>
-                <p className="text-xs opacity-70">Help return it safely</p>
+                <p className="text-sm sm:text-base font-black">I Found Something</p>
+                <p className="text-xs opacity-75">Help return it safely (+Karma)</p>
               </div>
             </button>
           </div>
 
-          {/* Sample Photos */}
-          <div className="space-y-3 pt-3 border-t border-slate-800/60">
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Quick Demo Photos:
+          {/* Photo Source Switcher Tabs */}
+          <div className="space-y-3 pt-2 border-t border-slate-800/60">
+            <label className="block text-xs font-black text-slate-300 uppercase tracking-wider">
+              Add Item Image
             </label>
-            <div className="flex flex-wrap gap-2">
-              {samplePhotos.map((s, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handlePhotoSelect(s)}
-                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
-                    photoUrl === s.url
-                      ? 'bg-campus-600/20 text-campus-300 border-campus-500/50 shadow-sm'
-                      : 'bg-slate-900/60 text-slate-300 border-slate-800 hover:bg-slate-800/60 hover:text-white'
-                  }`}
-                >
-                  <Image className="w-3.5 h-3.5" />
-                  {s.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800/80">
+              <button
+                type="button"
+                onClick={() => setPhotoMode('camera')}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  photoMode === 'camera'
+                    ? 'bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5 shrink-0" />
+                <span>Take Photo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPhotoMode('upload')}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  photoMode === 'upload'
+                    ? 'bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Image className="w-3.5 h-3.5 shrink-0" />
+                <span>Gallery Upload</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPhotoMode('presets')}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  photoMode === 'presets'
+                    ? 'bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span>Quick Demo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPhotoMode('url')}
+                className={`min-h-[42px] px-2 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  photoMode === 'url'
+                    ? 'bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>🔗 Paste URL</span>
+              </button>
             </div>
           </div>
 
-          {/* Photo Mode Switcher Tabs */}
-          <div className="flex border-b border-slate-800/80 mb-4 bg-slate-900/20 p-1 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setPhotoMode('url')}
-              className={`flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                photoMode === 'url'
-                  ? 'bg-slate-800 text-white shadow-sm border border-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <span>🔗 Paste Image URL</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPhotoMode('camera')}
-              className={`flex-1 py-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                photoMode === 'camera'
-                  ? 'bg-slate-800 text-white shadow-sm border border-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>📷 Take Photo</span>
-            </button>
-          </div>
+          {/* Photo Mode Viewport */}
+          <div className="space-y-4">
+            {/* Mode 1: Camera Capture */}
+            {photoMode === 'camera' && (
+              <CameraCapture 
+                onPhotoCaptured={handleCameraPhoto} 
+                onClear={handleCameraClear} 
+              />
+            )}
 
-          {/* Photo Preview & Input Area */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            
-            {/* Left Column: Visual Viewport (Show preview or the live camera) */}
-            <div className="w-full">
-              {photoMode === 'camera' ? (
-                <CameraCapture 
-                  onPhotoCaptured={handleCameraPhoto} 
-                  onClear={handleCameraClear} 
-                />
-              ) : (
-                <div className="aspect-video w-full rounded-2xl bg-slate-900/80 border border-slate-800/60 overflow-hidden flex items-center justify-center group shadow-md">
-                  {photoUrl ? (
-                    <img 
-                      src={photoUrl} 
-                      alt="Preview" 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+            {/* Mode 2: Gallery Upload */}
+            {photoMode === 'upload' && (
+              <div className="space-y-4">
+                <div className="p-6 rounded-2xl border-2 border-dashed border-slate-700/80 bg-slate-900/40 text-center flex flex-col items-center justify-center space-y-3 hover:border-campus-500/50 transition-all">
+                  <div className="w-12 h-12 rounded-full bg-campus-600/20 text-campus-400 flex items-center justify-center">
+                    <Image className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-white">Choose a photo from your device</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Supports PNG, JPG, WEBP formats</p>
+                  </div>
+                  <label className="cursor-pointer min-h-[44px] px-5 py-2.5 rounded-xl font-extrabold text-xs bg-campus-600 hover:bg-campus-500 text-white shadow-glow-primary transition-all flex items-center gap-2">
+                    <Camera className="w-4 h-4" />
+                    <span>Select Image File</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
                     />
-                  ) : (
-                    <div className="text-center text-slate-600 p-4">
-                      <Camera className="w-12 h-12 mx-auto mb-2 opacity-40" />
-                      <span className="text-sm font-bold">No photo URL specified</span>
-                    </div>
-                  )}
+                  </label>
                 </div>
-              )}
-            </div>
 
-            {/* Right Column: URL Input (if URL mode) & AI Visual Tags */}
-            <div className="space-y-4">
-              {photoMode === 'url' && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-black text-slate-300 uppercase tracking-wider">
-                    Photo URL
+                {photoUrl && (
+                  <div className="relative aspect-video w-full rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-md">
+                    <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={handleCameraClear}
+                      className="absolute top-3 right-3 px-3 py-1.5 rounded-xl bg-slate-950/80 text-xs font-bold text-rose-300 border border-rose-500/30"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Mode 3: Quick Demo Photos */}
+            {photoMode === 'presets' && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-400">Tap a sample photo below to load demo data:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {samplePhotos.map((s, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handlePhotoSelect(s)}
+                      className={`min-h-[50px] p-3 rounded-2xl border text-left transition-all flex items-center space-x-3 ${
+                        photoUrl === s.url
+                          ? 'bg-campus-600/20 text-white border-campus-500 shadow-sm ring-1 ring-campus-500/50'
+                          : 'bg-slate-900/60 text-slate-300 border-slate-800 hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <img src={s.url} alt={s.label} className="w-10 h-10 rounded-xl object-cover bg-slate-950 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-extrabold truncate">{s.label}</p>
+                        <p className="text-[10px] text-campus-300">{s.cat}</p>
+                      </div>
+                      {photoUrl === s.url && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Mode 4: Paste Image URL */}
+            {photoMode === 'url' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    Image Web Address (URL)
                   </label>
                   <input
                     type="text"
@@ -579,85 +662,81 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                       setPhotoFile(null);
                       runVisionAnalysis({ customPhotoUrl: url });
                     }}
-                    placeholder="Paste image URL..."
-                    className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                    placeholder="https://example.com/item.jpg"
+                    className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm text-white placeholder-slate-500 scroll-mt-keyboard"
                   />
                   {photoUrl.trim() && !isValidImageUrl(photoUrl) && (
-                    <p className="text-xs text-rose-300">Enter a valid image URL (for example, a .jpg, .png, or Unsplash image URL).</p>
+                    <p className="mt-1 text-xs text-rose-300">Enter a valid image URL (.jpg, .png, or Unsplash URL).</p>
                   )}
-                  <label className="block pt-2 text-xs font-black text-slate-300 uppercase tracking-wider">
-                    Or upload an image
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoUpload}
-                    className="w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-campus-600 file:px-3 file:py-2 file:font-bold file:text-white hover:file:bg-campus-500"
-                  />
                 </div>
-              )}
 
-              {/* AI Auto-Detected Tags Panel */}
-              <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800/60 shadow-sm">
-                <div className="flex items-center justify-between text-xs font-black mb-3">
-                  <span className="text-purple-300 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-ai-purple animate-pulse" />
-                    AI Auto-Detected Tags
-                  </span>
-                  {analyzingPhoto && (
-                    <div className="flex items-center gap-1.5 text-campus-400 font-bold">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Analyzing...</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {autoTags.length > 0 ? (
-                    autoTags.map((tag, idx) => (
-                      <span 
-                        key={idx} 
-                        className="px-2.5 py-1 rounded-xl bg-purple-950/45 text-purple-300 text-xs font-bold border border-purple-500/20 shadow-sm"
-                      >
-                        #{tag}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-slate-500 italic">
-                      Upload/capture a photo to detect tags automatically.
+                {photoUrl && isValidImageUrl(photoUrl) && (
+                  <div className="aspect-video w-full rounded-2xl bg-slate-900/80 border border-slate-800 overflow-hidden shadow-md">
+                    <img src={photoUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AI Auto-Detected Tags Card */}
+            <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800/70 shadow-sm space-y-2">
+              <div className="flex items-center justify-between text-xs font-black">
+                <span className="text-purple-300 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-ai-purple animate-pulse" />
+                  Gemini Vision Auto-Detected Tags
+                </span>
+                {analyzingPhoto && (
+                  <div className="flex items-center gap-1.5 text-campus-400 font-bold">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Analyzing...</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {autoTags.length > 0 ? (
+                  autoTags.map((tag, idx) => (
+                    <span 
+                      key={idx} 
+                      className="px-2.5 py-1 rounded-xl bg-purple-950/50 text-purple-300 text-[11px] font-bold border border-purple-500/25 shadow-sm"
+                    >
+                      #{tag}
                     </span>
-                  )}
-                </div>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500 italic">
+                    Add or take a photo to detect tags automatically.
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Step 1 validation error — shown after user attempts to proceed without a photo */}
-          {!step1Valid && (
-            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 text-sm font-semibold animate-slideUp">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              Please add a photo before continuing — select a demo photo, paste an image URL, or capture one with your camera.
+          {/* Validation Alert */}
+          {!step1Valid && showStep1Error && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs sm:text-sm font-semibold animate-slideUp">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>Please select a demo photo, take a picture, or upload an image before continuing.</span>
             </div>
           )}
 
+          {/* Action Button */}
           <div className="pt-2 flex justify-end">
             <button
               type="button"
               onClick={() => {
                 if (!step1Valid) {
-                  // Block navigation and reveal the error message
                   setShowStep1Error(true);
                   return;
                 }
-                // Photo is present — advance to Step 2
                 setShowStep1Error(false);
                 setCurrentStep(2);
               }}
               disabled={!step1Valid}
-              className={`btn-primary flex items-center space-x-2 transition-all ${
+              className={`btn-primary min-h-[52px] w-full sm:w-auto flex items-center justify-center space-x-2 transition-all ${
                 !step1Valid ? 'opacity-60 cursor-not-allowed' : ''
               }`}
             >
-              <span>Next: Add Details</span>
+              <span>Next: Describe Item</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -666,28 +745,38 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
 
       {/* ── STEP 2: DETAILS ── */}
       {currentStep === 2 && (
-        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/60 space-y-6 animate-slideUp">
+        <div className="glass-panel p-4 sm:p-8 rounded-3xl border border-slate-800/60 space-y-5 sm:space-y-6 animate-slideUp">
           <div>
-            <span className="text-xs font-bold text-campus-400 uppercase tracking-wider">Step 2 of 3</span>
-            <h3 className="text-2xl font-black text-white mt-1">Describe the Item</h3>
-            <p className="text-sm text-slate-400 mt-1">Type or speak your description. Add serial number for high-value items.</p>
+            <div className="hidden sm:flex items-center space-x-2 text-xs font-bold text-campus-400 uppercase tracking-wider mb-1">
+              <span>Step 2 of 3</span>
+              <span>•</span>
+              <span>● ● ○</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white">Describe the Item</h3>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Type or speak your description. Add serial number for high-value items.</p>
           </div>
 
+          {/* One-Column Layout on Mobile, Two-Column on Desktop */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Item Title *</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">
+                Item Title *
+              </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Black JanSport Backpack"
                 required
-                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white placeholder-slate-500"
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white placeholder-slate-500 scroll-mt-keyboard"
               />
-              {!title.trim() && <p className="mt-1 text-xs text-rose-300">Item Title is required.</p>}
+              {!title.trim() && showStep2Error && <p className="mt-1 text-xs text-rose-300">Item Title is required.</p>}
             </div>
+
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Category *</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">
+                Category *
+              </label>
               <select
                 value={category}
                 onChange={(e) => {
@@ -696,38 +785,40 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                     setIsHighValue(true);
                   }
                 }}
-                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white bg-slate-900 border border-slate-800 scroll-mt-keyboard"
               >
                 <option value="" disabled>Select a category</option>
-                <option value="Bags & Backpacks">Bags & Backpacks</option>
-                <option value="Electronics & Phones">Electronics & Phones</option>
-                <option value="Bottles & Containers">Bottles & Containers</option>
-                <option value="Keys & IDs">Keys & IDs</option>
-                <option value="Clothing & Accessories">Clothing & Accessories</option>
-                <option value="Books & Stationery">Books & Stationery</option>
+                <option value="Bags & Backpacks">Bags &amp; Backpacks</option>
+                <option value="Electronics & Phones">Electronics &amp; Phones</option>
+                <option value="Bottles & Containers">Bottles &amp; Containers</option>
+                <option value="Keys & IDs">Keys &amp; IDs</option>
+                <option value="Clothing & Accessories">Clothing &amp; Accessories</option>
+                <option value="Books & Stationery">Books &amp; Stationery</option>
                 <option value="Other">Other</option>
               </select>
               {category === 'Other' && (
                 <div className="mt-2.5 animate-fadeIn">
-                  <label className="block text-xs font-semibold text-campus-300 mb-1">Enter category</label>
+                  <label className="block text-xs font-semibold text-campus-300 mb-1">Enter category name</label>
                   <input
                     type="text"
                     value={customCategory}
                     onChange={(e) => setCustomCategory(e.target.value)}
-                    placeholder="Enter category"
+                    placeholder="Enter custom category"
                     required
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500 scroll-mt-keyboard"
                   />
                 </div>
               )}
-              {!effectiveCategory && <p className="mt-1 text-xs text-rose-300">Category is required.</p>}
+              {!effectiveCategory && showStep2Error && <p className="mt-1 text-xs text-rose-300">Category is required.</p>}
             </div>
           </div>
 
-          {/* Description & Voice */}
+          {/* Description & Voice / AI Controls */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="block text-sm font-bold text-slate-200">Detailed Description *</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200">
+                Detailed Description *
+              </label>
               <div className="flex items-center space-x-2">
                 <VoiceInputButton
                   onTranscript={handleVoiceTranscript}
@@ -737,7 +828,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                   type="button"
                   onClick={openSmartIntake}
                   disabled={loadingIntake}
-                  className="min-h-[44px] px-4 py-2 rounded-xl text-xs font-extrabold flex items-center space-x-1.5 transition-all text-white"
+                  className="min-h-[40px] sm:min-h-[44px] px-3 sm:px-4 py-2 rounded-xl text-xs font-extrabold flex items-center space-x-1.5 transition-all text-white shadow-sm"
                   style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #0170c7 100%)' }}
                 >
                   <Bot className="w-4 h-4" />
@@ -752,41 +843,45 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe color, brand, stickers, keychains, scratches, or speak using the microphone..."
               required
-              className="w-full p-4 rounded-2xl glass-input text-base text-white placeholder-slate-500 leading-relaxed"
+              className="w-full p-4 rounded-2xl glass-input text-sm sm:text-base text-white placeholder-slate-500 leading-relaxed scroll-mt-keyboard"
             />
-            {!description.trim() && <p className="text-xs text-rose-300">Detailed Description is required.</p>}
+            {!description.trim() && showStep2Error && <p className="text-xs text-rose-300">Detailed Description is required.</p>}
           </div>
 
-          {/* 🔒 Private Ownership Details */}
-          <div className="p-5 rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-950/30 to-slate-900/60 space-y-3">
-            <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0 mt-0.5">
-                <ShieldCheck className="w-4 h-4 text-violet-400" />
+          {/* Private Ownership Verification (Lost only) */}
+          {type === 'lost' && (
+            <div className="p-4 sm:p-5 rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-950/30 to-slate-900/60 space-y-2.5">
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0 mt-0.5">
+                  <ShieldCheck className="w-4 h-4 text-violet-400" />
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm font-extrabold text-violet-200">
+                    🔒 Private Ownership Details <span className="text-slate-400 font-semibold text-xs ml-1">(Optional)</span>
+                  </p>
+                  <p className="text-xs text-slate-300 leading-relaxed mt-0.5">
+                    Add details that only the true owner is likely to know. Used for anti-fraud verification and NOT shown publicly.
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-extrabold text-violet-200">🔒 Private Ownership Details <span className="text-slate-400 font-semibold text-xs ml-1">(Optional)</span></p>
-                <p className="text-xs text-slate-300 leading-relaxed mt-1">
-                  Add details that only the true owner is likely to know. These details will be used for ownership verification and will NOT be shown publicly.
+              <textarea
+                rows={2}
+                value={hiddenDetails}
+                onChange={(e) => setHiddenDetails(e.target.value)}
+                placeholder="e.g. Small red keychain attached to the left strap, or specific student ID inside."
+                className="w-full p-3.5 rounded-xl glass-input text-xs sm:text-sm text-white placeholder-slate-500 leading-relaxed scroll-mt-keyboard"
+              />
+              {hiddenDetails.trim() && (
+                <p className="text-xs text-emerald-400 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Private detail saved for verification quiz.
                 </p>
-              </div>
+              )}
             </div>
-            <textarea
-              rows={2}
-              value={hiddenDetails}
-              onChange={(e) => setHiddenDetails(e.target.value)}
-              placeholder="e.g. Small red keychain attached to the left strap."
-              className="w-full p-4 rounded-2xl glass-input text-sm text-white placeholder-slate-500 leading-relaxed"
-            />
-            {hiddenDetails.trim() && (
-              <p className="text-xs text-emerald-400 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Private detail saved — will be used to generate ownership verification questions.
-              </p>
-            )}
-          </div>
+          )}
 
-          {/* High-Value Flag */}
-          <div className="p-5 rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-950/30 to-slate-900/60 space-y-3">
+          {/* High-Value Item Flag */}
+          <div className="p-4 sm:p-5 rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-950/30 to-slate-900/60 space-y-3">
             <div className="flex items-center justify-between">
               <label className="flex items-center space-x-2.5 cursor-pointer">
                 <input
@@ -795,18 +890,18 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                   onChange={(e) => setIsHighValue(e.target.checked)}
                   className="w-5 h-5 rounded border-slate-700 text-amber-500 focus:ring-amber-400 bg-slate-900"
                 />
-                <span className="text-sm font-extrabold text-amber-200 flex items-center gap-1.5">
+                <span className="text-xs sm:text-sm font-extrabold text-amber-200 flex items-center gap-1.5">
                   <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
                   High-Value Item (Laptop, Phone, Jewelry, Wallet)
                 </span>
               </label>
-              <span className="text-[10px] text-amber-300/80 font-bold bg-amber-900/50 px-2 py-0.5 rounded-full border border-amber-500/25">
+              <span className="text-[10px] text-amber-300/80 font-bold bg-amber-900/50 px-2 py-0.5 rounded-full border border-amber-500/25 shrink-0 ml-2">
                 Extra Security
               </span>
             </div>
 
             {isHighValue && (
-              <div className="pt-3 border-t border-amber-500/15 space-y-2 animate-fadeIn">
+              <div className="pt-2.5 border-t border-amber-500/15 space-y-1.5 animate-fadeIn">
                 <label className="block text-xs font-bold text-amber-200">
                   Serial Number / IMEI (exact match guarantees ~100% verification):
                 </label>
@@ -815,25 +910,26 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                   value={serialNumber}
                   onChange={(e) => setSerialNumber(e.target.value)}
                   placeholder="e.g. IMEI-8832-9910-PRO or Serial #C02G..."
-                  className="w-full min-h-[48px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                  className="w-full min-h-[48px] px-4 py-2.5 rounded-xl glass-input text-xs sm:text-sm text-white placeholder-slate-500 scroll-mt-keyboard"
                 />
               </div>
             )}
           </div>
 
-          {/* Step 2 validation error — shown when title or description are empty */}
+          {/* Validation Alert */}
           {showStep2Error && !step2Valid && (
-            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-300 text-sm font-semibold animate-slideUp">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              Please fill in every required Details field before continuing.
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs sm:text-sm font-semibold animate-slideUp">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>Please fill in the Item Title, Category, and Description before continuing.</span>
             </div>
           )}
 
-          <div className="pt-2 flex items-center justify-between gap-3">
+          {/* Navigation Buttons: Responsive Stack on Mobile */}
+          <div className="pt-2 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
             <button
               type="button"
               onClick={() => setCurrentStep(1)}
-              className="btn-ghost flex items-center space-x-2"
+              className="w-full sm:w-auto min-h-[48px] btn-ghost flex items-center justify-center space-x-2"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back</span>
@@ -842,16 +938,14 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               type="button"
               onClick={() => {
                 if (!step2Valid) {
-                  // Block navigation and reveal specific field errors
                   setShowStep2Error(true);
                   return;
                 }
-                // Details are filled — advance to Step 3
                 setShowStep2Error(false);
                 setCurrentStep(3);
               }}
               disabled={!step2Valid}
-              className={`btn-primary flex items-center space-x-2 ${
+              className={`w-full sm:w-auto min-h-[52px] btn-primary flex items-center justify-center space-x-2 ${
                 !step2Valid ? 'opacity-60 cursor-not-allowed' : ''
               }`}
             >
@@ -864,24 +958,28 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
 
       {/* ── STEP 3: LOCATION & SUBMIT ── */}
       {currentStep === 3 && (
-        <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800/60 space-y-6 animate-slideUp">
+        <div className="glass-panel p-4 sm:p-8 rounded-3xl border border-slate-800/60 space-y-5 sm:space-y-6 animate-slideUp">
           <div>
-            <span className="text-xs font-bold text-campus-400 uppercase tracking-wider">Step 3 of 3</span>
-            <h3 className="text-2xl font-black text-white mt-1">Campus Location & Time</h3>
-            <p className="text-sm text-slate-400 mt-1">Where was the item left or found?</p>
+            <div className="hidden sm:flex items-center space-x-2 text-xs font-bold text-campus-400 uppercase tracking-wider mb-1">
+              <span>Step 3 of 3</span>
+              <span>•</span>
+              <span>● ● ●</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black text-white">Campus Location & Time</h3>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">Where and when was the item left or found?</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             {/* Building Selection */}
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Building *</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">Building *</label>
               <select
                 value={building}
                 onChange={(e) => {
                   setBuilding(e.target.value);
                   if (e.target.value !== 'Other') setCustomBuilding('');
                 }}
-                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white bg-slate-900 border border-slate-800 scroll-mt-keyboard"
               >
                 <option value="" disabled>Select Building</option>
                 <option value="Main Library">Main Library</option>
@@ -904,23 +1002,23 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                     onChange={(e) => setCustomBuilding(e.target.value)}
                     placeholder="Enter building name"
                     required
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500 scroll-mt-keyboard"
                   />
                 </div>
               )}
-              {!effectiveBuilding && <p className="mt-1 text-xs text-rose-300">Building is required.</p>}
+              {!effectiveBuilding && showStep3Error && <p className="mt-1 text-xs text-rose-300">Building is required.</p>}
             </div>
 
             {/* Floor Selection */}
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Floor</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">Floor</label>
               <select
                 value={floor}
                 onChange={(e) => {
                   setFloor(e.target.value);
                   if (e.target.value !== 'Other') setCustomFloor('');
                 }}
-                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white bg-slate-900 border border-slate-800 scroll-mt-keyboard"
               >
                 <option value="">Select Floor (Optional)</option>
                 <option value="Ground Floor">Ground Floor</option>
@@ -941,7 +1039,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                     value={customFloor}
                     onChange={(e) => setCustomFloor(e.target.value)}
                     placeholder="Enter floor"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500 scroll-mt-keyboard"
                   />
                 </div>
               )}
@@ -949,14 +1047,14 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
 
             {/* Area Selection */}
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Area</label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">Area</label>
               <select
                 value={area}
                 onChange={(e) => {
                   setArea(e.target.value);
                   if (e.target.value !== 'Other') setCustomArea('');
                 }}
-                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white bg-slate-900 border border-slate-800 scroll-mt-keyboard"
               >
                 <option value="">Select Area (Optional)</option>
                 <option value="Study Desks / Reading Room">Study Desks / Reading Room</option>
@@ -977,7 +1075,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
                     value={customArea}
                     onChange={(e) => setCustomArea(e.target.value)}
                     placeholder="Enter area"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500"
+                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl glass-input text-sm text-white placeholder-slate-500 scroll-mt-keyboard"
                   />
                 </div>
               )}
@@ -985,74 +1083,78 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
 
             {/* Specific Location Details */}
             <div>
-              <label className="block text-sm font-bold text-slate-200 mb-2">Location details <span className="text-slate-400 font-semibold text-xs ml-1">(Optional)</span></label>
+              <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">
+                Location details <span className="text-slate-400 font-semibold text-xs ml-1">(Optional)</span>
+              </label>
               <input
                 type="text"
                 value={locationDetails}
                 onChange={(e) => setLocationDetails(e.target.value)}
-                placeholder="e.g. Beside the staircase near Room 204"
-                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white placeholder-slate-500"
+                placeholder="e.g. Beside staircase near Room 204"
+                className="w-full min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white placeholder-slate-500 scroll-mt-keyboard"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-200 mb-2">Approximate Date & Time *</label>
+            <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">
+              Approximate Date &amp; Time *
+            </label>
             <input
               type="datetime-local"
               value={timestamp}
               onChange={(e) => setTimestamp(e.target.value)}
               required
-              className="w-full sm:w-80 min-h-[48px] px-4 py-3 rounded-xl glass-input text-base text-white bg-slate-900 border border-slate-800"
+              className="w-full sm:w-80 min-h-[48px] px-4 py-3 rounded-xl glass-input text-sm sm:text-base text-white bg-slate-900 border border-slate-800 scroll-mt-keyboard"
             />
-            {!timestamp && <p className="mt-1 text-xs text-rose-300">Approximate Date & Time is required.</p>}
+            {!timestamp && showStep3Error && <p className="mt-1 text-xs text-rose-300">Approximate Date &amp; Time is required.</p>}
           </div>
 
           {showStep3Error && !step3Valid && (
-            <p className="text-sm font-semibold text-rose-300">Please fill in Building, Room / Floor / Area, and Date & Time before submitting.</p>
-          )}
-
-          {/* Private Ownership Details — now collected in Step 2. Show read-only summary here if filled. */}
-          {hiddenDetails.trim() && (
-            <div className="p-4 rounded-2xl border border-violet-500/20 bg-violet-950/20 flex items-center space-x-3">
-              <ShieldCheck className="w-5 h-5 text-violet-400 shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-violet-300">🔒 Private Ownership Details Added</p>
-                <p className="text-xs text-slate-400 mt-0.5">Your private verification detail is saved and will be used for ownership verification only.</p>
-              </div>
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs sm:text-sm font-semibold animate-slideUp">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>Please fill in Building, Area/Floor, and Date &amp; Time before submitting.</span>
             </div>
           )}
 
-          {/* Final Submit */}
-          <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* Lost Ownership confirmation note */}
+          {type === 'lost' && hiddenDetails.trim() && (
+            <div className="flex items-start gap-2.5 p-3 sm:p-4 rounded-xl bg-campus-950/40 border border-campus-500/30 text-xs text-campus-200">
+              <ShieldCheck className="w-4 h-4 shrink-0 text-campus-400 mt-0.5" />
+              <span>
+                <strong>Verification Proof Added:</strong> Your private proof will be hidden from public view and used only to confirm your ownership.
+              </span>
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-2">
             <button
               type="button"
-              onClick={() => setCurrentStep(2)}
-              className="w-full sm:w-auto btn-ghost flex items-center justify-center space-x-2"
+              onClick={() => {
+                setShowStep3Error(false);
+                setCurrentStep(2);
+              }}
+              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-300 hover:text-white font-medium text-sm flex items-center justify-center space-x-2 transition-all active:scale-95"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back</span>
             </button>
-
             <button
-              type="button"
-              onClick={handleProceedSubmit}
-              disabled={submitting || !step3Valid}
-              title={!step3Valid ? 'Please fill in Building, Room/Area, and Date & Time' : ''}
-              className={`w-full sm:w-auto min-h-[52px] px-8 py-3.5 rounded-2xl font-extrabold text-base text-white flex items-center justify-center space-x-2 transition-all animate-borderGlow ${
-                !step3Valid ? 'opacity-60 cursor-not-allowed' : ''
+              type="submit"
+              disabled={loading || !step3Valid}
+              className={`w-full sm:w-auto min-h-[52px] btn-primary flex items-center justify-center space-x-2 px-8 ${
+                loading || !step3Valid ? 'opacity-60 cursor-not-allowed' : ''
               }`}
-              style={{ background: 'linear-gradient(135deg, #0170c7 0%, #8b5cf6 50%, #d946ef 100%)', boxShadow: '0 8px 24px -6px rgba(139,92,246,0.4)' }}
             >
-              {submitting ? (
+              {loading ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>AI Scanning for Matches...</span>
+                  <Sparkles className="w-5 h-5 animate-spin" />
+                  <span>Processing AI Match...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-5 h-5" />
-                  <span>Submit & Scan for Matches (+20 pts)</span>
+                  <span>Submit &amp; Find Match</span>
                 </>
               )}
             </button>

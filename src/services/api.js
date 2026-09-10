@@ -237,10 +237,35 @@ export const api = {
       visual_brand: payload.visual_brand || 'Generic',
       serial_number: payload.serial_number || '',
       is_high_value: parseInt(payload.is_high_value) || 0,
-      item_details_hidden: payload.item_details_hidden || ''
+      // Found reports never receive a substitute or fake ownership secret.
+      ...(payload.type === 'lost' ? { item_details_hidden: payload.item_details_hidden || '' } : {})
     };
 
-    // 5. Insert directly into Supabase PostgreSQL Database (with fail-safe fallback)
+    // The server is the authoritative creation path: it runs matching and the
+    // server-only email notification after a valid match is stored. Keep the
+    // direct Supabase path below only as the existing offline fallback.
+    try {
+      const backendPayload = formData instanceof FormData ? formData : reportRecord;
+      if (backendPayload instanceof FormData && !backendPayload.get('user_id') && userId) {
+        backendPayload.set('user_id', userId);
+      }
+      const response = await fetch(`${BASE_URL}/reports`, {
+        method: 'POST',
+        headers: backendPayload instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+        body: backendPayload instanceof FormData ? backendPayload : JSON.stringify(backendPayload)
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok || !contentType.includes('application/json')) {
+        throw new Error(`Backend report creation unavailable (${response.status})`);
+      }
+      const result = await response.json();
+      if (!result?.report?.id) throw new Error(result?.error || 'Backend did not return a report.');
+      return result;
+    } catch (backendError) {
+      console.warn('Backend report creation unavailable; using existing Supabase fallback:', backendError.message);
+    }
+
+    // 5. Existing offline fallback: store the report directly in Supabase.
     try {
       const { data: insertedData, error: dbError } = await supabase
         .from('reports')

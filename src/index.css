@@ -342,13 +342,31 @@
 }
 
 /* ==========================================================
-   RESPONSIVE SAFEGUARDS
+   RESPONSIVE SAFEGUARDS & MOBILE ERGONOMICS
    ========================================================== */
+
+/* Safe area insets for iOS / modern mobile viewports */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 16px);
+}
+.mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* Scroll margin utility for inputs so keyboard doesn't occlude them */
+.scroll-mt-keyboard {
+  scroll-margin-top: 100px;
+  scroll-margin-bottom: 120px;
+}
 
 /* Prevent horizontal overflow on all screen sizes */
 html, body {
   overflow-x: hidden;
   max-width: 100vw;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Ensure images never overflow their containers */
@@ -360,22 +378,16 @@ img {
 /* Safe modal scrolling on mobile */
 @media (max-width: 640px) {
   .glass-panel {
-    max-height: 92vh;
+    max-height: 94vh;
   }
 
   /* Ensure fixed modals are scrollable on mobile */
   [class*="fixed inset-0"] {
-    padding: 0.75rem;
-  }
-
-  /* Report form steps: full width on mobile */
-  .max-w-3xl {
-    padding-left: 1rem;
-    padding-right: 1rem;
+    padding: 0.5rem;
   }
 
   /* Prevent long words from overflowing cards */
-  h2, h3, h4, p, span, label {
+  h1, h2, h3, h4, h5, h6, p, span, label {
     overflow-wrap: break-word;
     word-break: break-word;
   }
@@ -383,7 +395,7 @@ img {
 
 /* Touch target minimum size — Apple HIG & WCAG 2.1 */
 @media (max-width: 768px) {
-  button, a, input[type="checkbox"], input[type="radio"] {
+  button, a, select, input[type="checkbox"], input[type="radio"] {
     min-height: 44px;
   }
   input[type="file"] {
@@ -394,7 +406,11 @@ img {
 /* Bottom nav clearance: prevent content from being hidden behind mobile bottom bar */
 @media (max-width: 768px) {
   main {
-    padding-bottom: 80px;
+    padding-bottom: 96px !important;
+  }
+  footer {
+    margin-bottom: 72px;
   }
 }
+
 

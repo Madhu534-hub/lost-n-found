@@ -68,6 +68,7 @@ export const MatchCard = ({ match, onStartVerification, onOpenChat, onOpenQR }) 
 
   const isVerified = match.status === 'verified';
   const isReunited = match.status === 'reunited';
+  const isValidAiMatch = Number(match.confidence_score) >= 50;
   const isHighValue = lost.is_high_value || found.is_high_value;
   const isSerialVerified = match.explanation?.toLowerCase().includes('serial') || match.is_serial_match;
 
@@ -117,7 +118,13 @@ export const MatchCard = ({ match, onStartVerification, onOpenChat, onOpenQR }) 
             )}
           </div>
 
-          {/* Status */}
+          {/* AI validity and ownership verification are intentionally separate. */}
+          {isValidAiMatch && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold mr-2">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              AI Match Valid
+            </span>
+          )}
           {isReunited ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
               <Award className="w-3.5 h-3.5 text-amber-400" />
@@ -237,7 +244,7 @@ export const MatchCard = ({ match, onStartVerification, onOpenChat, onOpenQR }) 
             <ShieldCheck className="w-5 h-5" />
             <span>{t('accessibility.claimBtn', 'This Is My Item — Verify Claim')}</span>
           </button>
-        ) : (
+        ) : (isFounder || (isLoser && (isVerified || isReunited))) ? (
           <>
             <button
               onClick={() => onOpenChat(match)}
@@ -256,7 +263,7 @@ export const MatchCard = ({ match, onStartVerification, onOpenChat, onOpenQR }) 
               <span>Handover QR</span>
             </button>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );

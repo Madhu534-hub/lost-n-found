@@ -18,7 +18,7 @@ import {
 import confetti from 'canvas-confetti';
 
 export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, session } = useAuth();
   const { showToast } = useNotification();
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -76,8 +76,12 @@ export const ChatDrawer = ({ isOpen, onClose, match, onReunited }) => {
         throw new Error("User session not found. Please sign in.");
       }
 
-      const lostUserId = match?.lost_user_id || match?.lost_report?.user_id;
-      const foundUserId = match?.found_user_id || match?.found_report?.user_id;
+      const lostUserId = match?.lost_user_id || match?.lost_report?.user_id ||
+        (match?.target_report?.type === 'lost' ? match.target_report.user_id :
+          (match?.matched_report?.type === 'lost' ? match.matched_report.user_id : null));
+      const foundUserId = match?.found_user_id || match?.found_report?.user_id ||
+        (match?.target_report?.type === 'found' ? match.target_report.user_id :
+          (match?.matched_report?.type === 'found' ? match.matched_report.user_id : null));
       
       const isLostOwner = String(myUserId) === String(lostUserId);
       const receiverId = isLostOwner ? foundUserId : (lostUserId || myUserId);
