@@ -120,6 +120,13 @@
   transform: translateY(0px) scale(0.98);
 }
 
+/* Compact variant for the primary action inside My Radar match cards. */
+.match-card-claim.btn-primary {
+  min-height: 44px;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.875rem;
+}
+
 .btn-ghost {
   @apply min-h-[48px] px-5 py-3 rounded-xl font-bold text-sm;
   background: rgba(30, 41, 59, 0.6);

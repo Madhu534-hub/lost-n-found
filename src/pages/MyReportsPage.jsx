@@ -308,13 +308,13 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
 
                 {/* Expanded Matches List */}
                 {isExpanded && matches.length > 0 && (
-                  <div className="border-t border-slate-800 p-5 space-y-4 bg-slate-900/40 animate-fadeIn">
+                  <div className="border-t border-slate-800 p-3 sm:p-4 space-y-2 bg-slate-900/40 animate-fadeIn">
                     <div className="flex items-center space-x-2 text-xs font-extrabold text-slate-300">
                       <Sparkles className="w-4 h-4 text-ai-purple" />
                       <span>AI Candidate Matches Ranked for this Item:</span>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4">
+                    <div className="grid grid-cols-1 gap-3 max-w-5xl mx-auto w-full">
                       {matches.map(match => (
                         <MatchCard
                           key={match.id}
