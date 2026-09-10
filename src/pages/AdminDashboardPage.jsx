@@ -77,7 +77,7 @@ export const AdminDashboardPage = () => {
     try {
       await api.moderateReport({
         adminId: currentUser?.id || 'user-admin',
-        adminName: currentUser?.name || 'Officer Miller',
+        adminName: currentUser?.name || 'Campus Security',
         reportId,
         action,
         notes: `Admin manually applied ${action} action.`

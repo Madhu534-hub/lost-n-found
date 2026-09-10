@@ -113,7 +113,7 @@ export function LoginPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="block w-full pl-10 pr-3 py-3 border border-slate-800 rounded-xl leading-5 bg-slate-950/50 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-campus-500 focus:border-campus-500 sm:text-sm transition-all"
-                    placeholder="Alex Chen"
+                    placeholder="Your name"
                   />
                 </div>
               </div>

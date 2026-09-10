@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
-import { DemoPersonaSwitcher } from './components/DemoPersonaSwitcher';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './pages/LandingPage';
 import { BrowseReportsPage } from './pages/BrowseReportsPage';
@@ -105,9 +104,6 @@ export function AppContent() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-campus-500 selection:text-white">
-      {/* 1-Click Demo Persona Bar for Hackathon Presentation */}
-      <DemoPersonaSwitcher />
-
       {/* Campus Navigation Bar */}
       <Navbar
         currentTab={activeTab}
@@ -181,7 +177,7 @@ export function AppContent() {
       {/* Premium Branded Footer */}
       <footer className="mt-auto border-t border-slate-800/60 bg-gradient-to-r from-slate-950 via-slate-900/90 to-slate-950 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-center justify-center">
             {/* Brand */}
             <div className="flex items-center space-x-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-campus-600 via-ai-purple to-ai-fuchsia flex items-center justify-center shadow-glow-primary">
@@ -194,27 +190,6 @@ export function AppContent() {
                 </p>
                 <p className="text-[11px] text-slate-400">AI-Powered Smart Campus Lost &amp; Found</p>
               </div>
-            </div>
-
-            {/* Tech Stack Pills */}
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {[
-                { label: 'Gemini Vision', emoji: '🔭' },
-                { label: 'React + Vite', emoji: '⚡' },
-                { label: 'Multimodal AI', emoji: '🧠' },
-                { label: 'Leaflet Maps', emoji: '🗺️' },
-              ].map(t => (
-                <span key={t.label} className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-900 text-slate-300 border border-slate-800">
-                  {t.emoji} {t.label}
-                </span>
-              ))}
-            </div>
-
-            {/* Hackathon Badge */}
-            <div className="text-center md:text-right">
-              <p className="text-[11px] text-slate-400">Built for</p>
-              <p className="text-xs font-extrabold text-white">Google for Developers</p>
-              <p className="text-[11px] text-campus-400 font-semibold">HBS × PromptWars × YenTech</p>
             </div>
           </div>
 
