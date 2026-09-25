@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { CampusMap } from '../components/CampusMap';
 import {
   Search,
@@ -16,7 +18,8 @@ import {
   Languages,
   Loader2,
   PackageOpen,
-  PlusCircle
+  PlusCircle,
+  Trash2
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -50,10 +53,30 @@ const SkeletonCard = () => (
 
 export const BrowseReportsPage = ({ onOpenPhotoSearch, onSelectReport }) => {
   const { t, i18n } = useTranslation();
+  const { currentUser, session } = useAuth();
+  const { showToast } = useNotification();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'map'
   
+  // Build a set of all known identity tokens for the current user so that
+  // ownership is recognised regardless of which identifier was stored when the
+  // report was created (Supabase UUID, email, or TraceIt ID).
+  const userIdSet = React.useMemo(() => {
+    const ids = [
+      currentUser?.id,
+      session?.user?.id,
+      currentUser?.email?.toLowerCase(),
+      session?.user?.email?.toLowerCase(),
+      currentUser?.traceit_id,
+      currentUser?.user_metadata?.traceit_id,
+      session?.user?.user_metadata?.traceit_id,
+    ].filter(Boolean);
+    return new Set(ids);
+  }, [currentUser, session]);
+
+  const currentUserId = currentUser?.id || session?.user?.id;
+
   // Filters
   const [search, setSearch] = useState('');
   const [type, setType] = useState('All');
@@ -83,6 +106,25 @@ export const BrowseReportsPage = ({ onOpenPhotoSearch, onSelectReport }) => {
       console.error('Fetch reports error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteReport = async (reportId, photoUrl) => {
+    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    try {
+      // Optimistically remove from state
+      setReports(prev => prev.filter(r => r.id !== reportId));
+      const res = await api.deleteReport(reportId, photoUrl);
+      if (res.success) {
+        showToast('Report deleted successfully.', 'success');
+      } else {
+        showToast(res.error || 'Failed to delete report.', 'error');
+        fetchReports();
+      }
+    } catch (err) {
+      console.error('Failed to delete report:', err);
+      showToast('Error deleting report. Please try again.', 'error');
+      fetchReports();
     }
   };
 
@@ -270,6 +312,19 @@ export const BrowseReportsPage = ({ onOpenPhotoSearch, onSelectReport }) => {
             const tags = typeof report.auto_tags === 'string' ? JSON.parse(report.auto_tags || '[]') : (report.auto_tags || []);
             const isLost = report.type === 'lost';
             const translatedDesc = translations[report.id];
+            // Check ownership against all possible identity tokens stored at
+            // report-creation time (UUID, email, TraceIt ID).
+            const isOwner = Boolean(
+              userIdSet.size > 0 && (
+                (report.user_id && (
+                  userIdSet.has(report.user_id) ||
+                  userIdSet.has(report.user_id?.toLowerCase())
+                )) ||
+                (report.user_email && (
+                  userIdSet.has(report.user_email.toLowerCase())
+                ))
+              )
+            );
 
             return (
               <div
@@ -288,7 +343,9 @@ export const BrowseReportsPage = ({ onOpenPhotoSearch, onSelectReport }) => {
                     />
                     {/* Dark gradient overlay for readability */}
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent" />
-                    <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                    
+                    {/* Type & Value Badges */}
+                    <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 z-10">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold uppercase shadow-md ${
                         isLost ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
                       }`}>
@@ -301,6 +358,22 @@ export const BrowseReportsPage = ({ onOpenPhotoSearch, onSelectReport }) => {
                         </span>
                       ) : null}
                     </div>
+
+                    {/* Owner-Only Trash Button on Image */}
+                    {isOwner && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteReport(report.id, report.photo_url);
+                        }}
+                        className="absolute top-3 right-3 min-h-[36px] min-w-[36px] p-2 rounded-xl bg-slate-950/85 hover:bg-rose-950/95 text-slate-300 hover:text-rose-200 border border-slate-700/80 hover:border-rose-500/60 shadow-lg backdrop-blur-md transition-all flex items-center justify-center group/del z-10"
+                        title="Delete My Report"
+                        aria-label="Delete Report"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-400 group-hover/del:scale-110 transition-transform" />
+                      </button>
+                    )}
                   </div>
 
                   {/* Body Content */}
@@ -350,15 +423,30 @@ export const BrowseReportsPage = ({ onOpenPhotoSearch, onSelectReport }) => {
                   </div>
                 </div>
 
-                {/* Footer Action (>= 48px height) */}
-                <div className="p-4 bg-slate-900/60 border-t border-slate-800">
+                {/* Footer Actions (>= 48px height) */}
+                <div className="p-4 bg-slate-900/60 border-t border-slate-800 flex items-center gap-2">
                   <button
                     onClick={() => { if (onSelectReport) onSelectReport(report); }}
-                    className="w-full min-h-[48px] px-4 py-2.5 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 hover:border-campus-500/40 flex items-center justify-center space-x-2 transition-all"
+                    className="flex-1 min-h-[48px] px-4 py-2.5 rounded-xl font-bold text-sm bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 hover:border-campus-500/40 flex items-center justify-center space-x-2 transition-all"
                   >
                     <Eye className="w-4 h-4 text-cyan-400" />
                     <span>View Details &amp; Matches</span>
                   </button>
+                  {isOwner && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteReport(report.id, report.photo_url);
+                      }}
+                      className="min-h-[48px] px-3.5 py-2.5 rounded-xl font-bold text-sm bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 hover:border-rose-500/60 flex items-center justify-center space-x-1.5 transition-all active:scale-95 shrink-0"
+                      title="Delete this report"
+                      aria-label="Delete this report"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-400" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );

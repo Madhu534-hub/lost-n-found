@@ -93,7 +93,7 @@ export const api = {
       return combined.map(r => ({
         ...r,
         user_name: r.user_name || 'Campus Member',
-        user_email: r.user_email || 'student@campus.edu',
+        user_email: r.user_email || '',
         user_avatar: r.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(r.user_name || r.title || 'Campus')}`
       }));
     } catch (err) {
@@ -105,7 +105,7 @@ export const api = {
       return filteredLocal.map(r => ({
         ...r,
         user_name: r.user_name || 'Campus Member',
-        user_email: r.user_email || 'student@campus.edu',
+        user_email: r.user_email || '',
         user_avatar: r.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(r.user_name || r.title || 'Campus')}`
       }));
     }
@@ -123,7 +123,7 @@ export const api = {
       return {
         ...data,
         user_name: data.user_name || 'Campus Member',
-        user_email: data.user_email || 'student@campus.edu',
+        user_email: data.user_email || '',
         user_avatar: data.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.title || 'Report')}`
       };
     } catch (err) {
@@ -206,7 +206,6 @@ export const api = {
     if (!photo_url) {
       photo_url = '';
     }
-
     // Safe JSON parse for auto_tags
     let parsedTags = [];
     if (payload.auto_tags) {
@@ -218,9 +217,13 @@ export const api = {
     }
 
     const reportId = `rep-${payload.type || 'lost'}-${Date.now()}`;
+
     const reportRecord = {
       id: reportId,
+      // Always persist both UUID and email so ownership matching works on any device/session
       user_id: userId,
+      user_email: userEmail,
+      user_name: userName,
       type: payload.type || 'lost',
       title: payload.title || 'Reported Item',
       description: payload.description || '',
@@ -241,91 +244,82 @@ export const api = {
       ...(payload.type === 'lost' ? { item_details_hidden: payload.item_details_hidden || '' } : {})
     };
 
-    // The server is the authoritative creation path: it runs matching and the
-    // server-only email notification after a valid match is stored. Keep the
-    // direct Supabase path below only as the existing offline fallback.
-    try {
-      const backendPayload = formData instanceof FormData ? formData : reportRecord;
-      if (backendPayload instanceof FormData && !backendPayload.get('user_id') && userId) {
-        backendPayload.set('user_id', userId);
-      }
-      const response = await fetch(`${BASE_URL}/reports`, {
-        method: 'POST',
-        headers: backendPayload instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
-        body: backendPayload instanceof FormData ? backendPayload : JSON.stringify(backendPayload)
-      });
-      const contentType = response.headers.get('content-type') || '';
-      if (!response.ok || !contentType.includes('application/json')) {
-        throw new Error(`Backend report creation unavailable (${response.status})`);
-      }
-      const result = await response.json();
-      if (!result?.report?.id) throw new Error(result?.error || 'Backend did not return a report.');
-      return result;
-    } catch (backendError) {
-      console.warn('Backend report creation unavailable; using existing Supabase fallback:', backendError.message);
-    }
+    // 5. Clean record matching exact Supabase public.reports table schema
+    const supabaseReportRecord = {
+      id: reportId,
+      user_id: userId,
+      type: payload.type || 'lost',
+      title: payload.title || 'Reported Item',
+      description: payload.description || '',
+      category: payload.category || 'Other',
+      photo_url: photo_url,
+      location: payload.location || payload.building || 'Campus',
+      building: payload.building || 'Main Campus',
+      lat: parseFloat(payload.lat) || 37.4275,
+      lng: parseFloat(payload.lng) || -122.1697,
+      timestamp: payload.timestamp || new Date().toISOString(),
+      status: 'active',
+      auto_tags: parsedTags,
+      visual_color: payload.visual_color || 'Standard',
+      visual_brand: payload.visual_brand || 'Generic',
+      serial_number: payload.serial_number || '',
+      is_high_value: parseInt(payload.is_high_value) || 0,
+      item_details_hidden: payload.type === 'lost' ? (payload.item_details_hidden || '') : null
+    };
 
-    // 5. Existing offline fallback: store the report directly in Supabase.
+    // 6. Direct Supabase storage: store the clean report record directly in Supabase
+    let finalReport = {
+      ...supabaseReportRecord,
+      user_name: userName,
+      user_email: userEmail,
+      user_avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`
+    };
+
     try {
       const { data: insertedData, error: dbError } = await supabase
         .from('reports')
-        .insert([reportRecord])
+        .upsert([supabaseReportRecord], { onConflict: 'id', ignoreDuplicates: false })
         .select()
         .single();
 
       if (dbError) throw dbError;
-
-      const finalReport = {
-        ...(insertedData || reportRecord),
-        user_name: userName,
-        user_email: userEmail,
-        user_avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`
-      };
-
-      return {
-        message: 'Report submitted successfully! Stored permanently in Supabase.',
-        report: finalReport,
-        matchCount: 0,
-        topMatches: []
-      };
+      if (insertedData) {
+        finalReport = { ...finalReport, ...insertedData };
+      }
     } catch (dbError) {
       console.warn('Supabase DB Insert note (using fail-safe store):', dbError.message);
-      
-      const fallbackReport = {
-        ...reportRecord,
-        user_name: userName,
-        user_email: userEmail,
-        user_avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`
-      };
-
-      const existing = JSON.parse(localStorage.getItem('traceit_pending_reports') || '[]');
-      existing.unshift(fallbackReport);
-      localStorage.setItem('traceit_pending_reports', JSON.stringify(existing));
-
-      return {
-        message: 'Report filed successfully!',
-        report: fallbackReport,
-        matchCount: 0,
-        topMatches: []
-      };
     }
-  },
-  getSmartIntake: async (data) => {
-    const res = await fetch(`${BASE_URL}/reports/smart-intake`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    return res.json();
-  },
-  analyzePhoto: async (formData) => {
-    const isMultipart = formData instanceof FormData;
-    const res = await fetch(`${BASE_URL}/reports/analyze-photo`, {
-      method: 'POST',
-      headers: isMultipart ? {} : { 'Content-Type': 'application/json' },
-      body: isMultipart ? formData : JSON.stringify(formData)
-    });
-    return res.json();
+
+    // 7. Inform Express backend (optional server-side triggers / sqlite sync)
+    try {
+      const backendPayload = formData instanceof FormData ? formData : supabaseReportRecord;
+      if (backendPayload instanceof FormData && !backendPayload.get('user_id') && userId) {
+        backendPayload.set('user_id', userId);
+      }
+      await fetch(`${BASE_URL}/reports`, {
+        method: 'POST',
+        headers: backendPayload instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+        body: backendPayload instanceof FormData ? backendPayload : JSON.stringify(backendPayload)
+      });
+    } catch (backendError) {
+      console.warn('Backend report sync notice:', backendError.message);
+    }
+
+    // Client-side cross-user match detection and notifications across all reports in Supabase
+    let matches = [];
+    try {
+      const allReports = await api.getReports();
+      matches = await api.getMatchesForReport(finalReport.id, allReports);
+    } catch (matchErr) {
+      console.warn('Match detection notice:', matchErr.message);
+    }
+
+    return {
+      message: 'Report submitted successfully! Stored permanently in Supabase.',
+      report: finalReport,
+      matchCount: matches.length,
+      topMatches: matches.slice(0, 3)
+    };
   },
   updateReportStatus: async (id, status) => {
     const res = await fetch(`${BASE_URL}/reports/${id}/status`, {
@@ -335,132 +329,196 @@ export const api = {
     });
     return res.json();
   },
-  deleteReport: async (id) => {
+  deleteReport: async (id, photoUrl = null) => {
+    let errorMsg = null;
+    let currentUserId = null;
     try {
-      const { error } = await supabase.from('reports').delete().eq('id', id);
-      if (error) console.warn('Supabase delete notice:', error.message);
+      const { data: { session } } = await supabase.auth.getSession();
+      currentUserId = session?.user?.id || null;
+    } catch {}
+
+    // 1. Try deleting from backend Express API if running
+    try {
+      await fetch(`${BASE_URL}/reports/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUserId })
+      });
+    } catch (e) {
+      console.warn('Backend delete notice (continuing to Supabase):', e.message);
+    }
+
+    // 2. Delete associated matches from Supabase
+    try {
+      await supabase.from('matches').delete().or(`lost_report_id.eq.${id},found_report_id.eq.${id}`);
+    } catch (mErr) {
+      console.warn('Supabase match delete notice:', mErr.message);
+    }
+
+    // 3. Delete report from Supabase
+    try {
+      const { error: dbError } = await supabase.from('reports').delete().eq('id', id);
+      if (dbError) {
+        console.warn('Supabase report delete notice:', dbError.message);
+        errorMsg = dbError.message;
+      }
+    } catch (err) {
+      console.warn('Supabase report delete error:', err.message);
+      errorMsg = err.message;
+    }
+
+    // 4. Delete uploaded photo from Supabase Storage if it was uploaded to item-images
+    if (photoUrl && typeof photoUrl === 'string' && photoUrl.includes('item-images')) {
+      try {
+        const parts = photoUrl.split('item-images/');
+        if (parts[1]) {
+          const filePath = parts[1].split('?')[0];
+          await supabase.storage.from('item-images').remove([filePath]);
+        }
+      } catch (sErr) {
+        console.warn('Supabase storage photo delete notice:', sErr.message);
+      }
+    }
+
+    // 5. Clean device local storage fallback
+    try {
       const local = JSON.parse(localStorage.getItem('traceit_pending_reports') || '[]');
       localStorage.setItem('traceit_pending_reports', JSON.stringify(local.filter(r => r.id !== id)));
-      return { success: true };
-    } catch (err) {
-      console.error('Delete report error:', err);
-      return { success: false, error: err.message };
+    } catch (lsErr) {
+      console.warn('LocalStorage delete notice:', lsErr.message);
     }
-  },
 
-  // Matches
-  getAllMatches: async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/matches`);
-      if (!res.ok) return [];
-      const contentType = res.headers.get('content-type');
-      if (contentType && !contentType.includes('application/json')) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch {
-      return [];
-    }
+    return { success: !errorMsg, error: errorMsg };
   },
-  getMatchesForReport: async (reportId, allReports = null) => {
-    // 1. Try querying backend matches API if available
+  getMatchesForReport: async (reportId, candidatePool = null) => {
     try {
-      const res = await fetch(`${BASE_URL}/matches/report/${reportId}`);
-      if (res.ok) {
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) return data;
-        }
+      let pool = candidatePool;
+      if (!pool || !Array.isArray(pool) || pool.length === 0) {
+        pool = await api.getReports();
       }
-    } catch {
-      // Backend not running, proceed to client-side Multimodal Fusion Matching Engine
-    }
 
-    // 2. Multimodal Fusion Matching Engine comparing real lost & found reports
-    try {
-      const reports = Array.isArray(allReports) && allReports.length > 0
-        ? allReports
-        : await api.getReports();
-      const target = reports.find(r => r.id === reportId);
-      if (!target) return [];
-      return findMatchesForReport(target, reports);
-    } catch (err) {
-      console.warn('Matching engine execution warning:', err);
-      return [];
-    }
-  },
-  getMatchById: async (id) => {
-    try {
-      const res = await fetch(`${BASE_URL}/matches/${id}`);
-      if (!res.ok) return null;
-      const contentType = res.headers.get('content-type');
-      if (contentType && !contentType.includes('application/json')) return null;
-      return await res.json();
-    } catch {
-      return null;
-    }
-  },
+      let targetReport = (pool || []).find(r => r.id === reportId);
+      if (!targetReport) {
+        try {
+          targetReport = await api.getReportById(reportId);
+        } catch {}
+      }
+      if (!targetReport) return [];
 
-  // Verification
-  getVerificationChallenge: async (matchOrId) => {
-    const matchId = typeof matchOrId === 'string' ? matchOrId : matchOrId?.id;
-    let matchObj = typeof matchOrId === 'object' ? matchOrId : null;
+      // 1. Calculate multimodal fusion matches across the shared campus pool
+      const calculatedMatches = findMatchesForReport(targetReport, pool || []);
 
-    // 1. If backend API is reachable and returns a valid challenge, use it
-    if (matchId) {
+      // 2. Fetch existing match records from Supabase public.matches for this report
+      let dbMatches = [];
       try {
-        const res = await fetch(`${BASE_URL}/verification/challenge/${matchId}`);
-        if (res.ok) {
-          const contentType = res.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const data = await res.json();
-            if (data && (data.question_1 || data.hasPrivateDetails === false || (data.questions && data.questions.length > 0))) {
-              return data;
+        const { data, error } = await supabase
+          .from('matches')
+          .select('*')
+          .or(`lost_report_id.eq.${reportId},found_report_id.eq.${reportId}`);
+        if (!error && Array.isArray(data)) {
+          dbMatches = data;
+        }
+      } catch (e) {
+        console.warn('Supabase match fetch warning:', e.message);
+      }
+
+      const dbMatchMap = new Map();
+      dbMatches.forEach(m => {
+        dbMatchMap.set(`${m.lost_report_id}-${m.found_report_id}`, m);
+      });
+
+      const finalMatches = [];
+      const seenPairKeys = new Set();
+
+      for (const cm of calculatedMatches) {
+        const pairKey = `${cm.lost_report_id}-${cm.found_report_id}`;
+        seenPairKeys.add(pairKey);
+        const existingDb = dbMatchMap.get(pairKey);
+
+        const mergedMatch = {
+          ...cm,
+          id: existingDb?.id || cm.id,
+          status: existingDb?.status || cm.status || 'pending',
+          explanation: existingDb?.explanation || cm.explanation
+        };
+
+        // If not in DB yet, persist to Supabase public.matches
+        if (!existingDb && mergedMatch.confidence_score >= 50) {
+          try {
+            await supabase.from('matches').upsert([{
+              id: mergedMatch.id,
+              lost_report_id: mergedMatch.lost_report_id,
+              found_report_id: mergedMatch.found_report_id,
+              confidence_score: mergedMatch.confidence_score,
+              visual_score: mergedMatch.visual_score,
+              text_score: mergedMatch.text_score,
+              location_score: mergedMatch.location_score,
+              time_score: mergedMatch.time_score,
+              explanation: mergedMatch.explanation,
+              status: mergedMatch.status
+            }], { onConflict: 'id', ignoreDuplicates: true });
+
+            // Notify the lost report owner
+            const lostUserId = mergedMatch.lost_user_id || mergedMatch.lost_report?.user_id;
+            if (lostUserId) {
+              const notifId = `notif-match-${mergedMatch.id}`;
+              const foundLocation = mergedMatch.found_report?.location || mergedMatch.found_report?.building || 'campus';
+              await supabase.from('notifications').upsert([{
+                id: notifId,
+                user_id: lostUserId,
+                type: 'match',
+                title: `🔔 Possible Match Found! (${mergedMatch.confidence_score}% confidence)`,
+                message: `Your lost item "${mergedMatch.lost_report?.title || 'Reported item'}" may have been found near ${foundLocation}. AI match confidence: ${mergedMatch.confidence_score}%. Tap to view and verify ownership.`,
+                match_id: mergedMatch.id,
+                read: false
+              }], { onConflict: 'id', ignoreDuplicates: true });
             }
+          } catch (pErr) {
+            console.warn('Match persist notice:', pErr.message);
           }
         }
-      } catch {
-        // Backend not available (e.g. static Vercel or offline), fall through to deterministic engine
-      }
-    }
 
-    // 2. Extract or fetch the lost and found reports
-    let lostReport = matchObj?.lost_report;
-    let foundReport = matchObj?.found_report;
-
-    if (!lostReport && matchObj?.lost_report_id) {
-      try {
-        lostReport = await api.getReportById(matchObj.lost_report_id);
-      } catch (e) {
-        console.warn('Could not fetch lost report by ID:', e);
+        finalMatches.push(mergedMatch);
       }
-    }
-    if (!foundReport && matchObj?.found_report_id) {
-      try {
-        foundReport = await api.getReportById(matchObj.found_report_id);
-      } catch (e) {
-        console.warn('Could not fetch found report by ID:', e);
-      }
-    }
 
-    // If only matchId string was provided (e.g. `match-{lostId}-{foundId}`):
-    if (!lostReport && typeof matchId === 'string' && matchId.startsWith('match-')) {
-      const parts = matchId.split('-');
-      if (parts.length >= 3) {
-        try {
-          lostReport = await api.getReportById(parts[1]);
-          foundReport = await api.getReportById(parts.slice(2).join('-'));
-        } catch (e) {}
+      // Also include any verified/existing DB matches not in calculated pool
+      for (const dm of dbMatches) {
+        const pairKey = `${dm.lost_report_id}-${dm.found_report_id}`;
+        if (!seenPairKeys.has(pairKey)) {
+          const lostRep = (pool || []).find(r => r.id === dm.lost_report_id);
+          const foundRep = (pool || []).find(r => r.id === dm.found_report_id);
+          if (lostRep && foundRep) {
+            finalMatches.push({
+              id: dm.id,
+              lost_report_id: dm.lost_report_id,
+              found_report_id: dm.found_report_id,
+              lost_user_id: lostRep.user_id,
+              found_user_id: foundRep.user_id,
+              confidence_score: dm.confidence_score,
+              visual_score: dm.visual_score,
+              text_score: dm.text_score,
+              location_score: dm.location_score,
+              time_score: dm.time_score,
+              explanation: dm.explanation,
+              status: dm.status,
+              target_report: targetReport,
+              matched_report: targetReport.id === dm.lost_report_id ? foundRep : lostRep,
+              lost_report: lostRep,
+              found_report: foundRep
+            });
+          }
+        }
       }
-    }
 
-    // 3. Formulate challenge strictly using verificationEngine
-    return generateVerificationChallenge(lostReport, foundReport);
+      return finalMatches.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
+    } catch (err) {
+      console.error('getMatchesForReport error:', err);
+      return [];
+    }
   },
   submitVerification: async ({ matchId, match, answer1, answer2, userId, challenge }) => {
-    // 1. Try backend submission if available
     try {
-      const res = await fetch(`${BASE_URL}/verification/submit`, {
+      const res = await fetch(`${BASE_URL}/verification/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId, answer1, answer2, userId })

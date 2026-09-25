@@ -112,27 +112,38 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
   // Step 2 needs every field that is labelled with an asterisk.
   const step2Valid = !!(title.trim() && effectiveCategory && description.trim());
 
-  // Step 3 is valid if building is selected/entered, floor/area/details provided, and a timestamp is set.
-  const step3Valid = !!(effectiveBuilding && (effectiveFloor || effectiveArea || effectiveLocationDetails) && timestamp);
+  // Step 3 is valid if building is selected/entered and a timestamp is set.
+  const step3Valid = !!(effectiveBuilding && timestamp);
+
+  // Quick helper to populate timestamp with local date/time on mobile
+  const handleSetNow = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(now.getTime() - offset).toISOString().slice(0, 16);
+    setTimestamp(localISOTime);
+  };
 
   // ─── GATED STEP NAVIGATION ─────────────────────────────────────────────────
   // Called when the user clicks a step tab directly (e.g. jumping from 1 to 3).
   // Blocks forward navigation if earlier steps are incomplete.
   const handleStepClick = (targetStep) => {
     if (targetStep > 1 && !step1Valid) {
-      // User tried to jump past Step 1 without a photo
+      showToast('Please add or select a photo in Step 1 first.', 'error');
       setShowStep1Error(true);
-      setCurrentStep(1); // force them back to Step 1
+      setCurrentStep(1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (targetStep > 2 && !step2Valid) {
-      // User tried to jump past Step 2 without title/description
+      showToast('Please complete Title, Category, and Description in Step 2.', 'error');
       setShowStep2Error(true);
-      setCurrentStep(2); // force them back to Step 2
+      setCurrentStep(2);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     // All prerequisite steps are valid — allow navigation
     setCurrentStep(targetStep);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const samplePhotos = [
@@ -726,15 +737,14 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               onClick={() => {
                 if (!step1Valid) {
                   setShowStep1Error(true);
+                  showToast('Please add or select a photo in Step 1 before continuing.', 'error');
                   return;
                 }
                 setShowStep1Error(false);
                 setCurrentStep(2);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              disabled={!step1Valid}
-              className={`btn-primary min-h-[52px] w-full sm:w-auto flex items-center justify-center space-x-2 transition-all ${
-                !step1Valid ? 'opacity-60 cursor-not-allowed' : ''
-              }`}
+              className="btn-primary min-h-[52px] w-full sm:w-auto flex items-center justify-center space-x-2 transition-all active:scale-98 shadow-md"
             >
               <span>Next: Describe Item</span>
               <ArrowRight className="w-4 h-4" />
@@ -928,7 +938,10 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
           <div className="pt-2 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => setCurrentStep(1)}
+              onClick={() => {
+                setCurrentStep(1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               className="w-full sm:w-auto min-h-[48px] btn-ghost flex items-center justify-center space-x-2"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -939,15 +952,14 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               onClick={() => {
                 if (!step2Valid) {
                   setShowStep2Error(true);
+                  showToast('Please fill in Item Title, Category, and Description to continue.', 'error');
                   return;
                 }
                 setShowStep2Error(false);
                 setCurrentStep(3);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              disabled={!step2Valid}
-              className={`w-full sm:w-auto min-h-[52px] btn-primary flex items-center justify-center space-x-2 ${
-                !step2Valid ? 'opacity-60 cursor-not-allowed' : ''
-              }`}
+              className="w-full sm:w-auto min-h-[52px] btn-primary flex items-center justify-center space-x-2 active:scale-98 shadow-md"
             >
               <span>Next: Location & Time</span>
               <ArrowRight className="w-4 h-4" />
@@ -1096,10 +1108,20 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs sm:text-sm font-bold text-slate-200 mb-1.5">
-              Approximate Date &amp; Time *
-            </label>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs sm:text-sm font-bold text-slate-200">
+                Approximate Date &amp; Time *
+              </label>
+              <button
+                type="button"
+                onClick={handleSetNow}
+                className="text-xs font-bold text-campus-300 hover:text-white px-2.5 py-1 rounded-lg bg-campus-500/20 border border-campus-500/30 flex items-center gap-1 transition-all active:scale-95"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Set to Now</span>
+              </button>
+            </div>
             <input
               type="datetime-local"
               value={timestamp}
@@ -1113,7 +1135,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
           {showStep3Error && !step3Valid && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-200 text-xs sm:text-sm font-semibold animate-slideUp">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>Please fill in Building, Area/Floor, and Date &amp; Time before submitting.</span>
+              <span>Please select a Building and enter Approximate Date &amp; Time before submitting.</span>
             </div>
           )}
 
@@ -1133,6 +1155,7 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               onClick={() => {
                 setShowStep3Error(false);
                 setCurrentStep(2);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-300 hover:text-white font-medium text-sm flex items-center justify-center space-x-2 transition-all active:scale-95"
             >
@@ -1140,15 +1163,14 @@ export const ReportItemPage = ({ onReportCreated, onViewExistingReport }) => {
               <span>Back</span>
             </button>
             <button
-              type="submit"
-              disabled={loading || !step3Valid}
-              className={`w-full sm:w-auto min-h-[52px] btn-primary flex items-center justify-center space-x-2 px-8 ${
-                loading || !step3Valid ? 'opacity-60 cursor-not-allowed' : ''
-              }`}
+              type="button"
+              onClick={handleProceedSubmit}
+              disabled={submitting}
+              className="w-full sm:w-auto min-h-[52px] btn-primary flex items-center justify-center space-x-2 px-8 active:scale-98 shadow-glow-primary"
             >
-              {loading ? (
+              {submitting ? (
                 <>
-                  <Sparkles className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   <span>Processing AI Match...</span>
                 </>
               ) : (

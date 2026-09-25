@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Camera, RefreshCw, AlertCircle, Check, Video } from 'lucide-react';
+import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 /**
  * CameraCapture Component
- * Uses navigator.mediaDevices.getUserMedia() to capture photos from webcam or mobile camera.
+ * Uses native @capacitor/camera on mobile Android and navigator.mediaDevices.getUserMedia() on web.
  *
  * Props:
  * @param {Function} onPhotoCaptured - Called with (dataUrl, file) after a successful capture
@@ -18,6 +20,44 @@ export const CameraCapture = ({ onPhotoCaptured, onClear }) => {
   const [previewUrl,     setPreviewUrl]     = useState(null);  // base64 dataURL of captured photo
   const [error,          setError]          = useState(null);  // user-facing error message
   const [isLoading,      setIsLoading]      = useState(false); // initial camera boot
+
+  // ─── NATIVE CAPACITOR CAMERA ──────────────────────────────────────────────
+  const takeNativePhoto = async () => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const image = await CapCamera.getPhoto({
+        quality: 85,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera
+      });
+      if (image?.dataUrl) {
+        setPreviewUrl(image.dataUrl);
+        const res = await fetch(image.dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `capture-${Date.now()}.${image.format || 'jpg'}`, {
+          type: `image/${image.format || 'jpeg'}`,
+          lastModified: Date.now()
+        });
+        if (onPhotoCaptured) onPhotoCaptured(image.dataUrl, file);
+      }
+    } catch (err) {
+      if (err?.message && !err.message.includes('User cancelled') && !err.message.includes('canceled')) {
+        setError(`Camera error: ${err.message}`);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOpenClick = () => {
+    if (Capacitor.isNativePlatform()) {
+      takeNativePhoto();
+    } else {
+      startCamera();
+    }
+  };
 
   // ─── REFS ─────────────────────────────────────────────────────────────────
   const videoRef  = useRef(null); // <video> DOM element
@@ -220,7 +260,11 @@ export const CameraCapture = ({ onPhotoCaptured, onClear }) => {
   const handleRetake = () => {
     setPreviewUrl(null);
     if (onClear) onClear();
-    startCamera();
+    if (Capacitor.isNativePlatform()) {
+      takeNativePhoto();
+    } else {
+      startCamera();
+    }
   };
 
   const handleCancel = () => {
@@ -253,7 +297,7 @@ export const CameraCapture = ({ onPhotoCaptured, onClear }) => {
             </div>
             <button
               type="button"
-              onClick={startCamera}
+              onClick={handleOpenClick}
               disabled={isLoading}
               className="min-h-[42px] px-6 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-campus-600 to-ai-purple text-white shadow-glow-primary hover:brightness-110 active:scale-95 transition-all flex items-center gap-2"
             >

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import { MatchCard } from '../components/MatchCard';
 import { VerificationModal } from '../components/VerificationModal';
 import { ChatDrawer } from '../components/ChatDrawer';
@@ -22,6 +23,7 @@ import {
 
 export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
   const { currentUser, session, loading: authLoading } = useAuth();
+  const { showToast } = useNotification();
   const [myReports, setMyReports] = useState([]);
   const [matchesByReport, setMatchesByReport] = useState({});
   const [expandedReports, setExpandedReports] = useState({});
@@ -39,6 +41,8 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
 
   const loadUserReports = async () => {
     const userId = currentUser?.id || session?.user?.id;
+
+
     if (!userId) {
       setLoading(false);
       return;
@@ -60,8 +64,11 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
       ]);
       const cleanAll = rawList.filter(r => !IGNORED_TEST_IDS.has(r.id));
 
-      // Filter reports belonging to current user
-      const userReports = cleanAll.filter(r => r.user_id === userId);
+      // Strictly filter reports owned by the current authenticated user's UUID.
+      // Other users' public reports remain visible in Explore, but never in My Radar.
+      const userReports = cleanAll.filter(r =>
+        r.user_id && String(r.user_id).trim() === String(userId).trim()
+      );
       setMyReports(userReports);
 
       // Auto-expand and calculate multimodal fusion matches across the campus pool
@@ -93,10 +100,19 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
   const handleDeleteReport = async (reportId) => {
     if (!window.confirm('Are you sure you want to delete this report?')) return;
     try {
-      await api.deleteReport(reportId);
-      loadUserReports();
+      // Optimistically remove from state
+      setMyReports(prev => prev.filter(r => r.id !== reportId));
+      const res = await api.deleteReport(reportId);
+      if (res.success) {
+        showToast('Report deleted successfully.', 'success');
+      } else {
+        showToast(res.error || 'Failed to delete report from database.', 'error');
+        loadUserReports();
+      }
     } catch (err) {
       console.error('Failed to delete report:', err);
+      showToast('Error deleting report. Please try again.', 'error');
+      loadUserReports();
     }
   };
 

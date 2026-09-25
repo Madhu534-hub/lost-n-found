@@ -1,34 +1,121 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { api } from '../services/api';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
 const NotificationContext = createContext(null);
 
 export const NotificationProvider = ({ children }) => {
   const { currentUser } = useAuth();
-  const [notifications, setNotifications] = useState([
-    {
-      id: 'notif-1',
-      title: '🎯 96% Match Found!',
-      message: 'A black JanSport backpack found near Main Library matches your reported lost item.',
-      time: '10m ago',
-      read: false,
-      type: 'match',
-      matchId: 'match-1',
-      reportId: 'rep-lost-1'
-    },
-    {
-      id: 'notif-2',
-      title: '🔐 Verification Unlocked',
-      message: 'Ownership challenge passed for backpack. In-app secure chat is now active.',
-      time: '5m ago',
-      read: false,
-      type: 'verified',
-      matchId: 'match-1'
-    }
-  ]);
+  const [notifications, setNotifications] = useState([]);
   const [toast, setToast] = useState(null);
+  const channelRef = useRef(null);
 
+  // ── Fetch notifications from Supabase ──────────────────────────────────────
+  const fetchNotifications = useCallback(async () => {
+    if (!currentUser?.id || !isSupabaseConfigured()) return;
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!error && data) {
+        setNotifications(data);
+      }
+    } catch (err) {
+      console.warn('[NotificationContext] fetch error:', err.message);
+    }
+  }, [currentUser?.id]);
+
+  // ── Subscribe to realtime inserts for this user ────────────────────────────
+  useEffect(() => {
+    if (!currentUser?.id || !isSupabaseConfigured()) return;
+
+    // Initial fetch
+    fetchNotifications();
+
+    // Subscribe to realtime changes on the notifications table for this user
+    const channel = supabase
+      .channel(`notifications:${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          setNotifications((prev) => {
+            // Deduplicate by id
+            if (prev.some((n) => n.id === payload.new.id)) return prev;
+            return [payload.new, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === payload.new.id ? payload.new : n))
+          );
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [currentUser?.id, fetchNotifications]);
+
+  // ── Mark a single notification as read ────────────────────────────────────
+  const markAsRead = useCallback(async (notifId) => {
+    // Optimistic update
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notifId ? { ...n, read: true } : n))
+    );
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notifId)
+        .eq('user_id', currentUser?.id);
+    } catch (err) {
+      console.warn('[NotificationContext] markAsRead error:', err.message);
+    }
+  }, [currentUser?.id]);
+
+  // ── Mark all as read ───────────────────────────────────────────────────────
+  const markAllAsRead = useCallback(async () => {
+    // Optimistic update
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (!currentUser?.id || !isSupabaseConfigured()) return;
+    try {
+      await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', currentUser.id)
+        .eq('read', false);
+    } catch (err) {
+      console.warn('[NotificationContext] markAllAsRead error:', err.message);
+    }
+  }, [currentUser?.id]);
+
+  // ── Toast notifications (unchanged) ───────────────────────────────────────
   const showToast = (message, type = 'info') => {
     setToast({ message, type, id: Date.now() });
     setTimeout(() => {
@@ -36,20 +123,18 @@ export const NotificationProvider = ({ children }) => {
     }, 4000);
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
-
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
     <NotificationContext.Provider
       value={{
         notifications,
         unreadCount,
+        markAsRead,
         markAllAsRead,
         showToast,
-        toast
+        toast,
+        refreshNotifications: fetchNotifications
       }}
     >
       {children}

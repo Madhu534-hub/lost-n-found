@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TraceIt</string>
+    <string name="title_activity_main">TraceIt</string>
+    <string name="package_name">com.traceit.campuslostfound</string>
+    <string name="custom_url_scheme">com.traceit.campuslostfound</string>
+</resources>

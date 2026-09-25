@@ -45,45 +45,81 @@ export function calculateTextOverlap(text1, text2) {
   return union > 0 ? (intersection / union) * 100 : 0;
 }
 
+/// Helper to determine if two campus categories are compatible
+export function areCategoriesCompatible(cat1, cat2) {
+  if (!cat1 || !cat2) return true;
+  const c1 = cat1.toLowerCase().trim();
+  const c2 = cat2.toLowerCase().trim();
+  if (c1 === c2) return true;
+  if (c1 === 'other' || c2 === 'other') return true;
+
+  const isElectronics = (c) => c.includes('electronic') || c.includes('phone') || c.includes('laptop') || c.includes('audio') || c.includes('earphone');
+  const isKeysOrIDs = (c) => c.includes('key') || c.includes('id') || c.includes('card');
+  const isBags = (c) => c.includes('bag') || c.includes('backpack');
+  const isBottles = (c) => c.includes('bottle') || c.includes('container') || c.includes('flask');
+  const isClothing = (c) => c.includes('cloth') || c.includes('apparel') || c.includes('wear') || c.includes('shoe');
+  const isWallets = (c) => c.includes('wallet') || c.includes('purse');
+
+  if (isElectronics(c1) && (isKeysOrIDs(c2) || isBottles(c2) || isClothing(c2))) return false;
+  if (isElectronics(c2) && (isKeysOrIDs(c1) || isBottles(c1) || isClothing(c1))) return false;
+  if (isKeysOrIDs(c1) && (isBags(c2) || isBottles(c2) || isClothing(c2) || isElectronics(c2))) return false;
+  if (isKeysOrIDs(c2) && (isBags(c1) || isBottles(c1) || isClothing(c1) || isElectronics(c1))) return false;
+  if (isBottles(c1) && (isClothing(c2) || isWallets(c2) || isElectronics(c2))) return false;
+  if (isBottles(c2) && (isClothing(c1) || isWallets(c1) || isElectronics(c1))) return false;
+
+  return true;
+}
+
 // Visual similarity score (0 - 100)
 export function calculateVisualSimilarity(rep1, rep2) {
   let score = 0;
+  const c1 = (rep1.category || '').toLowerCase().trim();
+  const c2 = (rep2.category || '').toLowerCase().trim();
+  const compatible = areCategoriesCompatible(rep1.category, rep2.category);
 
   // Category match
-  if (rep1.category && rep2.category && rep1.category === rep2.category) {
+  if (c1 && c2 && c1 === c2) {
     score += 40;
+  } else if (compatible) {
+    score += (c1 === 'other' || c2 === 'other') ? 20 : 15;
   } else {
-    // If titles share keywords, don't drop to 0
-    return 20;
+    // Incompatible categories — check if strong text/brand evidence exists
+    const t1 = `${rep1.title || ''} ${rep1.visual_brand || ''}`.toLowerCase();
+    const t2 = `${rep2.title || ''} ${rep2.visual_brand || ''}`.toLowerCase();
+    const overlap = calculateTextOverlap(t1, t2);
+    if (overlap < 30) {
+      return 0; // Incompatible physical object
+    }
+    score += 10;
   }
 
   // Color match
-  const c1 = (rep1.visual_color || '').toLowerCase();
-  const c2 = (rep2.visual_color || '').toLowerCase();
-  if (c1 && c2) {
-    if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) {
+  const col1 = (rep1.visual_color || '').toLowerCase().trim();
+  const col2 = (rep2.visual_color || '').toLowerCase().trim();
+  if (col1 && col2 && col1 !== 'standard' && col2 !== 'standard') {
+    if (col1 === col2 || col1.includes(col2) || col2.includes(col1)) {
       score += 25;
     } else if (
-      (c1.includes('blue') && c2.includes('blue')) ||
-      (c1.includes('black') && c2.includes('dark')) ||
-      (c1.includes('white') && c2.includes('silver')) ||
-      (c1.includes('red') && c2.includes('crimson'))
+      (col1.includes('blue') && col2.includes('blue')) ||
+      (col1.includes('black') && col2.includes('dark')) ||
+      (col1.includes('white') && col2.includes('silver')) ||
+      (col1.includes('red') && col2.includes('crimson'))
     ) {
-      score += 20;
-    }
-  } else {
-    score += 15;
-  }
-
-  // Brand match
-  const b1 = (rep1.visual_brand || '').toLowerCase();
-  const b2 = (rep2.visual_brand || '').toLowerCase();
-  if (b1 && b2 && b1 !== 'generic' && b2 !== 'generic') {
-    if (b1 === b2 || b1.includes(b2) || b2.includes(b1)) {
-      score += 20;
+      score += 18;
     }
   } else {
     score += 10;
+  }
+
+  // Brand match
+  const b1 = (rep1.visual_brand || '').toLowerCase().trim();
+  const b2 = (rep2.visual_brand || '').toLowerCase().trim();
+  if (b1 && b2 && b1 !== 'generic' && b2 !== 'generic') {
+    if (b1 === b2 || b1.includes(b2) || b2.includes(b1)) {
+      score += 25;
+    }
+  } else {
+    score += 8;
   }
 
   // Auto tags overlap
@@ -100,13 +136,13 @@ export function calculateVisualSimilarity(rep1, rep2) {
           shared++;
         }
       }
-      const tagScore = Math.min(15, (shared / Math.max(1, set1.size)) * 20);
+      const tagScore = Math.min(15, (shared / Math.max(1, Math.min(set1.size, set2.size))) * 15);
       score += tagScore;
     } else {
-      score += 10;
+      score += 5;
     }
   } catch {
-    score += 10;
+    score += 5;
   }
 
   return Math.min(100, Math.round(score));
@@ -114,8 +150,8 @@ export function calculateVisualSimilarity(rep1, rep2) {
 
 // Semantic text similarity score (0 - 100)
 export function calculateTextSimilarity(rep1, rep2) {
-  const fullText1 = `${rep1.title || ''} ${rep1.description || ''} ${rep1.location || ''}`;
-  const fullText2 = `${rep2.title || ''} ${rep2.description || ''} ${rep2.location || ''}`;
+  const fullText1 = `${rep1.title || ''} ${rep1.description || ''}`;
+  const fullText2 = `${rep2.title || ''} ${rep2.description || ''}`;
 
   const rawOverlap = calculateTextOverlap(fullText1, fullText2);
 
@@ -124,12 +160,26 @@ export function calculateTextSimilarity(rep1, rep2) {
   const title2 = (rep2.title || '').toLowerCase().trim();
   let titleBonus = 0;
   if (title1 && title2) {
-    if (title1 === title2) titleBonus = 40;
-    else if (title1.includes(title2) || title2.includes(title1)) titleBonus = 30;
+    if (title1 === title2) {
+      titleBonus = 45;
+    } else if (title1.includes(title2) || title2.includes(title1)) {
+      titleBonus = 35;
+    } else {
+      const titleOverlap = calculateTextOverlap(title1, title2);
+      if (titleOverlap > 0) titleBonus = titleOverlap * 0.4;
+    }
   }
 
-  const boostedScore = rawOverlap * 1.3 + titleBonus;
-  return Math.min(100, Math.max(25, Math.round(boostedScore)));
+  const keyTerms = ['jansport', 'octocat', 'carabiner', 'iphone', 'macbook', 'hydro flask', 'yosemite', 'subaru', 'airpods', 'airpotes', 'earphones', 'earbuds', 'stanford'];
+  let keyMatches = 0;
+  for (const term of keyTerms) {
+    if (fullText1.toLowerCase().includes(term) && fullText2.toLowerCase().includes(term)) {
+      keyMatches++;
+    }
+  }
+
+  const score = rawOverlap * 1.3 + titleBonus + (keyMatches * 15);
+  return Math.min(100, Math.max(0, Math.round(score)));
 }
 
 // Location proximity score (0 - 100) based on user-entered location & floor
@@ -180,11 +230,10 @@ export function calculateLocationSimilarity(rep1, rep2) {
     return Math.max(15, Math.round(100 - (distMeters / 25)));
   }
 
-  // If text is completely different (e.g. "College Canteen" vs "Main Library"), return low score
-  return 20;
+  return 50;
 }
 
-// Time proximity score (0 - 100)
+// Calculate temporal proximity score based on timestamp difference
 export function calculateTimeSimilarity(rep1, rep2) {
   const t1 = new Date(rep1.timestamp).getTime();
   const t2 = new Date(rep2.timestamp).getTime();
@@ -192,6 +241,7 @@ export function calculateTimeSimilarity(rep1, rep2) {
   if (isNaN(t1) || isNaN(t2)) return 75;
 
   const diffHours = Math.abs(t1 - t2) / (1000 * 60 * 60);
+
   if (diffHours <= 1) return 98;
   if (diffHours <= 3) return 92;
   if (diffHours <= 8) return 85;
@@ -220,12 +270,24 @@ export function computeFusionScore(lostReport, foundReport) {
     timeScore * 0.15
   );
 
+  // ── Physical Item Viability Gate ──────────────────────────────────────────
+  const itemScore = (visualScore * 0.5) + (textScore * 0.5);
+  const compatible = areCategoriesCompatible(lostReport.category, foundReport.category);
+
+  if (!hasExactSerialMatch) {
+    if (!compatible && textScore < 30) {
+      confidenceScore = Math.min(confidenceScore, 25);
+    } else if (itemScore < 20) {
+      confidenceScore = Math.min(confidenceScore, Math.round(itemScore * 1.5));
+    }
+  }
+
   if (hasExactSerialMatch) {
     confidenceScore = 99;
   }
 
   return {
-    confidenceScore: Math.min(100, Math.max(10, confidenceScore)),
+    confidenceScore: Math.min(100, Math.max(0, confidenceScore)),
     visualScore: hasExactSerialMatch ? 100 : visualScore,
     textScore: hasExactSerialMatch ? 100 : textScore,
     locationScore,
@@ -276,6 +338,8 @@ export function findMatchesForReport(targetReport, allReports = []) {
         id: `match-${lostRep.id}-${foundRep.id}`,
         lost_report_id: lostRep.id,
         found_report_id: foundRep.id,
+        lost_user_id: lostRep.user_id,
+        found_user_id: foundRep.user_id,
         confidence_score: scores.confidenceScore,
         visual_score: scores.visualScore,
         text_score: scores.textScore,

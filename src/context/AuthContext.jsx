@@ -240,6 +240,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    // Clear any transient local caches on logout to ensure report isolation across accounts
+    try {
+      localStorage.removeItem('traceit_pending_reports');
+    } catch {}
+
     // Remove access immediately; the auth event will also keep this in sync.
     setSession(null);
     setCurrentUser(null);

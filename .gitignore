@@ -9,3 +9,7 @@ dist-ssr/
 
 .vercel
 .env*
+*.jks
+*.keystore
+keystore.properties
+keystores/

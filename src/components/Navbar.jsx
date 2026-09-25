@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 import {
   Sparkles,
   Compass,
@@ -15,15 +16,30 @@ import {
   Menu,
   X,
   User,
-  ChevronRight
+  ChevronRight,
+  Bell
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) => {
   const { t, i18n } = useTranslation();
   const { currentUser, logout } = useAuth();
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotification();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
+
+  // Close notification panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+      }
+    };
+    if (notifOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [notifOpen]);
 
   const changeLanguage = (lang) => {
     i18n.changeLanguage(lang);
@@ -71,7 +87,7 @@ export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) =>
                   AI
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 -mt-0.5 hidden sm:block">Campus Lost &amp; Found</p>
+              <p className="text-[11px] text-slate-400 -mt-0.5 hidden sm:block">AI-Powered Smart Campus Lost &amp; Found</p>
             </div>
           </div>
 
@@ -118,6 +134,103 @@ export const Navbar = ({ currentTab, setTab, onOpenPhotoSearch, onOpenTour }) =>
               <Camera className="w-4 h-4 text-cyan-400 shrink-0" />
               <span className="hidden lg:inline">{t('nav.photoSearch', 'Search by Photo')}</span>
             </button>
+
+            {/* Notification Bell (visible when logged in) */}
+            {currentUser && (
+              <div className="relative" ref={notifRef}>
+                <button
+                  id="notification-bell-btn"
+                  onClick={() => setNotifOpen(!notifOpen)}
+                  className="relative min-h-[38px] sm:min-h-[44px] min-w-[38px] sm:min-w-[44px] px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-700 hover:border-amber-500/50 flex items-center justify-center shadow-sm transition-all"
+                  title="Notifications"
+                  aria-label="Notifications"
+                >
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center px-1 shadow-lg animate-pulse">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Dropdown Panel */}
+                {notifOpen && (
+                  <div
+                    id="notification-panel"
+                    className="absolute right-0 mt-2 w-80 sm:w-96 glass-panel rounded-2xl border border-slate-700/80 shadow-2xl z-50 animate-scaleIn overflow-hidden"
+                  >
+                    {/* Panel Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-amber-400" />
+                        <span className="text-sm font-black text-white">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-black border border-rose-500/30">
+                            {unreadCount} new
+                          </span>
+                        )}
+                      </div>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={() => { markAllAsRead(); }}
+                          className="text-[11px] font-bold text-campus-400 hover:text-campus-300 transition-colors"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Notification List */}
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
+                      {notifications.length === 0 ? (
+                        <div className="py-8 text-center">
+                          <Bell className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                          <p className="text-sm text-slate-500">No notifications yet</p>
+                          <p className="text-xs text-slate-600 mt-0.5">AI match alerts will appear here</p>
+                        </div>
+                      ) : (
+                        notifications.slice(0, 20).map((notif) => (
+                          <div
+                            key={notif.id}
+                            id={`notif-item-${notif.id}`}
+                            className={`px-4 py-3 transition-colors cursor-pointer ${
+                              notif.read
+                                ? 'bg-slate-900/40 hover:bg-slate-800/40'
+                                : 'bg-campus-950/50 hover:bg-campus-950/70 border-l-2 border-campus-500'
+                            }`}
+                            onClick={() => {
+                              if (!notif.read) markAsRead(notif.id);
+                              if (notif.match_id) {
+                                setNotifOpen(false);
+                                setTab('my-reports');
+                              }
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${notif.read ? 'bg-slate-600' : 'bg-campus-400 animate-pulse'}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-white leading-snug">{notif.title}</p>
+                                <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed line-clamp-2">{notif.message}</p>
+                                <div className="flex items-center justify-between mt-1.5">
+                                  <span className="text-[10px] text-slate-500">
+                                    {new Date(notif.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                  {notif.match_id && (
+                                    <span className="text-[10px] font-bold text-campus-400 hover:text-campus-300">
+                                      View Match →
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Language Switcher (Desktop) */}
             <div className="relative hidden sm:block">
