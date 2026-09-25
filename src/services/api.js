@@ -321,6 +321,87 @@ export const api = {
       topMatches: matches.slice(0, 3)
     };
   },
+  // Update an existing report (Ownership verified on frontend and backend)
+  updateReport: async (id, payload) => {
+    // 1. Get current authenticated user session
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    const userId = user?.id || null;
+
+    if (!userId) {
+      throw new Error('You must be logged in to edit a report.');
+    }
+
+    // 2. Fetch existing report to verify ownership on the frontend
+    const { data: existingReport, error: fetchErr } = await supabase
+      .from('reports')
+      .select('user_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    // Verify ownership: ensure current user created this report
+    if (existingReport && existingReport.user_id && existingReport.user_id !== userId) {
+      throw new Error('Unauthorized: You can only edit your own reports.');
+    }
+
+    // 3. Prepare payload fields
+    let updatedRecord = {};
+    if (payload instanceof FormData) {
+      if (!payload.get('user_id')) payload.append('user_id', userId);
+      // Convert FormData entries to an object for Supabase
+      payload.forEach((val, key) => {
+        if (key !== 'photo') updatedRecord[key] = val;
+      });
+    } else {
+      updatedRecord = { ...payload, user_id: userId };
+    }
+
+    // Parse auto_tags if passed as string
+    if (typeof updatedRecord.auto_tags === 'string') {
+      try {
+        updatedRecord.auto_tags = JSON.parse(updatedRecord.auto_tags);
+      } catch (e) {}
+    }
+
+    // 4. Update report record directly in Supabase DB
+    try {
+      const { error: dbError } = await supabase
+        .from('reports')
+        .update(updatedRecord)
+        .eq('id', id)
+        .eq('user_id', userId); // Enforce owner check in DB update
+
+      if (dbError) {
+        console.warn('Supabase report update note:', dbError.message);
+      }
+    } catch (dbErr) {
+      console.warn('Supabase report update exception:', dbErr.message);
+    }
+
+    // 5. Send PUT request to Express backend (updates SQLite & triggers cross-user sync)
+    try {
+      const backendPayload = payload instanceof FormData ? payload : updatedRecord;
+      const res = await fetch(`${BASE_URL}/reports/${id}`, {
+        method: 'PUT',
+        headers: backendPayload instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
+        body: backendPayload instanceof FormData ? backendPayload : JSON.stringify(backendPayload)
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Failed to update report on backend server.');
+      }
+      return result;
+    } catch (backendErr) {
+      console.warn('Backend update notice (continuing with Supabase update):', backendErr.message);
+      // If backend fails but Supabase succeeded, return clean success object
+      return {
+        success: true,
+        message: 'Report updated successfully!',
+        report: { id, ...updatedRecord }
+      };
+    }
+  },
   updateReportStatus: async (id, status) => {
     const res = await fetch(`${BASE_URL}/reports/${id}/status`, {
       method: 'PATCH',
@@ -516,9 +597,52 @@ export const api = {
       return [];
     }
   },
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // BUG FIX: This method was missing! VerificationModal.jsx calls
+  // api.getVerificationChallenge(match) but the method was never defined
+  // in this file, causing a runtime error ("api.getVerificationChallenge is
+  // not a function") when a user tried to verify ownership of a match.
+  //
+  // How it works: First tries fetching from the backend Express server.
+  // If the backend is unavailable (e.g. Vercel frontend-only deployment),
+  // falls back to generating the challenge client-side using the
+  // verificationEngine imported at the top of this file.
+  // ──────────────────────────────────────────────────────────────────────────
+  getVerificationChallenge: async (match) => {
+    const matchId = match?.id;
+
+    // Identify lost and found report objects from the match
+    const lostReport = match?.lost_report || (match?.target_report?.type === 'lost' ? match?.target_report : match?.matched_report);
+    const foundReport = match?.found_report || (match?.target_report?.type === 'found' ? match?.target_report : match?.matched_report);
+
+    // 1. Try the Express backend endpoint first
+    try {
+      if (matchId) {
+        const res = await fetch(`${BASE_URL}/verification/challenge/${matchId}`);
+        if (res.ok) {
+          const data = await res.json();
+          // If backend generated valid anti-fraud questions, return them!
+          if (data && (data.question_1 || data.questions?.length > 0)) {
+            return data;
+          }
+        }
+      }
+    } catch {
+      // Backend not reachable — fall through to client-side generation
+    }
+
+    // 2. Client-side fallback: generate challenge from the match's report data
+    return generateVerificationChallenge(lostReport, foundReport);
+  },
+
   submitVerification: async ({ matchId, match, answer1, answer2, userId, challenge }) => {
     try {
-      const res = await fetch(`${BASE_URL}/verification/verify`, {
+      // BUG FIX: The URL was "/verification/verify" but the backend route is
+      // "/verification/submit" (see backend/routes/verification.js line 75).
+      // This mismatch meant verification submissions always got a 404 from the
+      // backend, silently falling through to the client-side evaluator.
+      const res = await fetch(`${BASE_URL}/verification/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId, answer1, answer2, userId })

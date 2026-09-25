@@ -34,7 +34,13 @@ export function generateVerificationChallenge(lostReport, foundReport) {
   // Identify the private details provided by the owner (check lost report first, then found report)
   const rawDetails = (
     lostReport?.item_details_hidden ||
+    lostReport?.itemDetailsHidden ||
+    lostReport?.hidden_details ||
+    lostReport?.private_details ||
     foundReport?.item_details_hidden ||
+    foundReport?.itemDetailsHidden ||
+    foundReport?.hidden_details ||
+    foundReport?.private_details ||
     ''
   ).trim();
 

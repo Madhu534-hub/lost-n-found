@@ -3,6 +3,53 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Sparkles, MapPin, Search, Mail, Lock, User, AlertCircle, ArrowRight, Eye, EyeOff, KeyRound } from 'lucide-react';
 
+// ──────────────────────────────────────────────────────────────────────────────
+// BUG FIX: PasswordInput was previously defined INSIDE LoginPage's function body.
+//
+// WHY THAT WAS A BUG:
+//   When you define a component (like PasswordInput) inside another component's
+//   function, React creates a brand-new "component type" every time the parent
+//   re-renders. React sees the old and new PasswordInput as two DIFFERENT
+//   components, so it DESTROYS the old input and CREATES a fresh one from scratch.
+//   That's why the cursor lost focus after every keystroke — the <input> element
+//   you were typing into was being deleted and replaced with a new one!
+//
+// THE FIX:
+//   Move PasswordInput OUTSIDE of LoginPage so it's only created once.
+//   Now React recognises it as the same stable component across renders and
+//   simply updates its props without destroying the DOM element.
+// ──────────────────────────────────────────────────────────────────────────────
+const PasswordInput = ({ id, label, value, onChange, show, onToggle, placeholder = '••••••••', minLength = 6 }) => (
+  <div>
+    <label htmlFor={id} className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{label}</label>
+    <div className="relative">
+      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <Lock className="h-5 w-5 text-slate-500" />
+      </div>
+      <input
+        id={id}
+        type={show ? 'text' : 'password'}
+        required
+        value={value}
+        onChange={onChange}
+        className="block w-full pl-10 pr-12 py-3 border border-slate-800 rounded-xl leading-5 bg-slate-950/50 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-campus-500 focus:border-campus-500 sm:text-sm transition-all"
+        placeholder={placeholder}
+        minLength={minLength}
+        autoComplete={label.toLowerCase().includes('new') ? 'new-password' : 'current-password'}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-[44px] min-h-[44px] justify-center text-slate-400 hover:text-white transition-colors"
+        aria-label={show ? 'Hide password' : 'Show password'}
+        tabIndex={-1}
+      >
+        {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+      </button>
+    </div>
+  </div>
+);
+
 export function LoginPage() {
   const { login, register } = useAuth();
   // 'login' | 'signup' | 'forgot' | 'reset'
@@ -161,38 +208,6 @@ export function LoginPage() {
       setLoading(false);
     }
   };
-
-  // Reusable password input with eye toggle
-  const PasswordInput = ({ id, label, value, onChange, show, onToggle, placeholder = '••••••••', minLength = 6 }) => (
-    <div>
-      <label htmlFor={id} className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{label}</label>
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <Lock className="h-5 w-5 text-slate-500" />
-        </div>
-        <input
-          id={id}
-          type={show ? 'text' : 'password'}
-          required
-          value={value}
-          onChange={onChange}
-          className="block w-full pl-10 pr-12 py-3 border border-slate-800 rounded-xl leading-5 bg-slate-950/50 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-campus-500 focus:border-campus-500 sm:text-sm transition-all"
-          placeholder={placeholder}
-          minLength={minLength}
-          autoComplete={label.toLowerCase().includes('new') ? 'new-password' : 'current-password'}
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          className="absolute inset-y-0 right-0 pr-3 flex items-center min-w-[44px] min-h-[44px] justify-center text-slate-400 hover:text-white transition-colors"
-          aria-label={show ? 'Hide password' : 'Show password'}
-          tabIndex={-1}
-        >
-          {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-        </button>
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 sm:p-6 lg:p-8 font-sans">
