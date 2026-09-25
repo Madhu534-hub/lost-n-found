@@ -410,35 +410,66 @@ export const api = {
     });
     return res.json();
   },
+  // Delete an existing report (Ownership verified on frontend and backend)
   deleteReport: async (id, photoUrl = null) => {
     let errorMsg = null;
     let currentUserId = null;
+
+    // 1. Get current authenticated user session
     try {
       const { data: { session } } = await supabase.auth.getSession();
       currentUserId = session?.user?.id || null;
     } catch {}
 
-    // 1. Try deleting from backend Express API if running
+    if (!currentUserId) {
+      throw new Error('You must be logged in to delete a report.');
+    }
+
+    // 2. Fetch report to verify ownership on the frontend before calling API
     try {
-      await fetch(`${BASE_URL}/reports/${id}`, {
+      const { data: reportData } = await supabase
+        .from('reports')
+        .select('user_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (reportData && reportData.user_id && reportData.user_id !== currentUserId) {
+        throw new Error('Unauthorized: You can only delete your own reports.');
+      }
+    } catch (authErr) {
+      if (authErr.message.includes('Unauthorized')) throw authErr;
+    }
+
+    // 3. Send DELETE request to Express backend (updates SQLite & removes backend matches)
+    try {
+      const res = await fetch(`${BASE_URL}/reports/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUserId })
       });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Backend failed to delete report.');
+      }
     } catch (e) {
       console.warn('Backend delete notice (continuing to Supabase):', e.message);
     }
 
-    // 2. Delete associated matches from Supabase
+    // 4. Delete associated matches from Supabase
     try {
       await supabase.from('matches').delete().or(`lost_report_id.eq.${id},found_report_id.eq.${id}`);
     } catch (mErr) {
       console.warn('Supabase match delete notice:', mErr.message);
     }
 
-    // 3. Delete report from Supabase
+    // 5. Delete report from Supabase (enforce user_id filter for DB security)
     try {
-      const { error: dbError } = await supabase.from('reports').delete().eq('id', id);
+      const { error: dbError } = await supabase
+        .from('reports')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentUserId);
+
       if (dbError) {
         console.warn('Supabase report delete notice:', dbError.message);
         errorMsg = dbError.message;
@@ -448,7 +479,7 @@ export const api = {
       errorMsg = err.message;
     }
 
-    // 4. Delete uploaded photo from Supabase Storage if it was uploaded to item-images
+    // 6. Delete uploaded photo from Supabase Storage if it was uploaded to item-images
     if (photoUrl && typeof photoUrl === 'string' && photoUrl.includes('item-images')) {
       try {
         const parts = photoUrl.split('item-images/');
@@ -461,7 +492,7 @@ export const api = {
       }
     }
 
-    // 5. Clean device local storage fallback
+    // 7. Clean device local storage fallback
     try {
       const local = JSON.parse(localStorage.getItem('traceit_pending_reports') || '[]');
       localStorage.setItem('traceit_pending_reports', JSON.stringify(local.filter(r => r.id !== id)));

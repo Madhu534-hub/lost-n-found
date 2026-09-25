@@ -104,7 +104,7 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
   };
 
   const handleDeleteReport = async (reportId) => {
-    if (!window.confirm('Are you sure you want to delete this report?')) return;
+    if (!window.confirm('Are you sure you want to delete this report? This action cannot be undone.')) return;
     try {
       // Optimistically remove from state
       setMyReports(prev => prev.filter(r => r.id !== reportId));
@@ -319,7 +319,7 @@ export const MyReportsPage = ({ onReportNew, onOpenQR }) => {
                     )}
 
                     <button
-                      onClick={() => handleDeleteReport(report.id)}
+                      onClick={() => handleDeleteReport(report.id, report.photo_url)}
                       title="Delete report"
                       className="min-h-[44px] min-w-[44px] flex items-center justify-center p-2.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border border-slate-800 hover:border-rose-500/30 transition-all"
                     >
